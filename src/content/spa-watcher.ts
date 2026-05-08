@@ -42,5 +42,4 @@ observer.observe(document.body || document.documentElement, {
 });
 
 lastUrl = window.location.href;
-// Wait for settings before first scan so feature gates reflect stored preferences.
 settingsReady.then(() => setTimeout(scanForRows, 800));

@@ -31,7 +31,6 @@ export function civDataSlugForPlayer(player: PlayerSummary | null): string {
   if (CIV_ID_TO_DATA_SLUG[id]) return CIV_ID_TO_DATA_SLUG[id];
   const attrib = String(player.civilizationAttrib || '').toLowerCase();
   if (CIV_ID_TO_DATA_SLUG[attrib]) return CIV_ID_TO_DATA_SLUG[attrib];
-  // Future-civ fallback: if attrib looks slug-shaped, trust it.
   if (/^[a-z]+$/.test(attrib)) return attrib;
   return '';
 }
@@ -129,8 +128,6 @@ export function ensureUnitDataForSummary(summary: GameSummary | null | undefined
         }
       }
     }
-    // Always clear pending for every requested slug; otherwise a partial or
-    // failed response leaves entries permanently pending and starves retries.
     for (const s of missing) unitDataPendingFetches.delete(s);
     if (updated && typeof onUpdated === 'function') onUpdated();
   });

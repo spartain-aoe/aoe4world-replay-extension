@@ -14,7 +14,6 @@ export function maxAbs(values: readonly number[]): number {
 }
 
 export function buildSampleLabels(duration: number, step: number): number[] {
-  // Ceil so the final partial bucket is included; floor would drop end-of-game events.
   const end = Math.max(0, Math.ceil(duration / step) * step);
   const labels: number[] = [];
   for (let second = 0; second <= end; second += step) labels.push(second);
@@ -38,7 +37,6 @@ export function collapseChartSeries(series: ChartSeries[], limit: number): Chart
   const sorted = [...series].sort((a, b) => maxAbs(b.values) - maxAbs(a.values));
   const keep = sorted.slice(0, limit - 1);
   const rest = sorted.slice(limit - 1);
-  // Aggregate raw event times so range-selection deltas work on the Other bucket too.
   const otherFinished: number[] = [];
   const otherDestroyed: number[] = [];
   for (const item of rest) {

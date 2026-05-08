@@ -156,8 +156,6 @@ export function updateArmyMiniTooltip(
       tooltip.appendChild(title);
     }
 
-    // Upgrade dots: only show for dots near the cursor in PIXEL space — time-only
-    // matching would hit every player's upgrade in the snapped sample.
     const collapsedPlayers = getCollapsedPlayers(chart);
     const rect = canvas.getBoundingClientRect();
     const cssWidth = rect.width;

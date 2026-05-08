@@ -1,15 +1,50 @@
-const list = document.getElementById('list');
-const countEl = document.getElementById('count');
-let currentFavorites = {}; // keep reference for re-star
+type PopupSettings = {
+  recolorSwatches: boolean;
+  injectCharts: boolean;
+  debugLogs: boolean;
+};
 
-// ----- settings panel -----
-const SETTINGS_DEFAULTS = Object.freeze({ recolorSwatches: false, injectCharts: true, debugLogs: false });
-const settingsPanel = document.getElementById('settings');
-const settingsToggle = document.getElementById('settings-toggle');
-const optCharts = document.getElementById('opt-charts');
-const optRecolor = document.getElementById('opt-recolor');
-const optDebug = document.getElementById('opt-debug');
-const reloadHint = document.getElementById('reload-hint');
+type FavoriteMeta = {
+  team1?: string[];
+  team2?: string[];
+  players?: string[];
+  pageUrl?: string;
+  mode?: string;
+  map?: string;
+};
+
+type FavoriteEntry = {
+  savedAt?: number;
+  meta?: FavoriteMeta;
+};
+
+type FavoritesById = Record<string, FavoriteEntry>;
+
+type SettingsStorage = {
+  settings?: Partial<PopupSettings>;
+};
+
+type GetFavoritesResponse = {
+  favorites?: FavoritesById;
+  count?: number;
+  max?: number;
+};
+
+type LaunchReplayResponse = {
+  success?: boolean;
+};
+
+const list = document.getElementById('list') as HTMLElement;
+const countEl = document.getElementById('count') as HTMLElement;
+let currentFavorites: FavoritesById = {};
+
+const SETTINGS_DEFAULTS = Object.freeze<PopupSettings>({ recolorSwatches: false, injectCharts: true, debugLogs: false });
+const settingsPanel = document.getElementById('settings') as HTMLElement;
+const settingsToggle = document.getElementById('settings-toggle') as HTMLElement;
+const optCharts = document.getElementById('opt-charts') as HTMLInputElement;
+const optRecolor = document.getElementById('opt-recolor') as HTMLInputElement;
+const optDebug = document.getElementById('opt-debug') as HTMLInputElement;
+const reloadHint = document.getElementById('reload-hint') as HTMLElement;
 
 settingsToggle.addEventListener('click', () => {
   const open = !settingsPanel.classList.contains('open');
@@ -19,18 +54,18 @@ settingsToggle.addEventListener('click', () => {
   settingsToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
 });
 
-function loadSettingsIntoPanel() {
-  chrome.storage.local.get('settings', ({ settings }) => {
-    const merged = { ...SETTINGS_DEFAULTS, ...(settings || {}) };
+function loadSettingsIntoPanel(): void {
+  chrome.storage.local.get('settings', ({ settings }: SettingsStorage): void => {
+    const merged: PopupSettings = { ...SETTINGS_DEFAULTS, ...(settings || {}) };
     optCharts.checked = merged.injectCharts !== false;
     optRecolor.checked = merged.recolorSwatches === true;
     optDebug.checked = merged.debugLogs === true;
   });
 }
 
-async function updateOneSetting(key, value) {
-  const { settings: existing } = await chrome.storage.local.get('settings');
-  const next = { ...SETTINGS_DEFAULTS, ...(existing || {}), [key]: value };
+async function updateOneSetting(key: keyof PopupSettings, value: boolean): Promise<void> {
+  const { settings: existing } = await chrome.storage.local.get('settings') as SettingsStorage;
+  const next: PopupSettings = { ...SETTINGS_DEFAULTS, ...(existing || {}), [key]: value };
   await chrome.storage.local.set({ settings: next });
   reloadHint.classList.add('show');
 }
@@ -40,7 +75,7 @@ optRecolor.addEventListener('change', () => updateOneSetting('recolorSwatches', 
 optDebug.addEventListener('change', () => updateOneSetting('debugLogs', optDebug.checked));
 loadSettingsIntoPanel();
 
-function render(favorites, count, max) {
+function render(favorites: FavoritesById, count: number, max: number): void {
   currentFavorites = favorites;
   countEl.textContent = `(${count}/${max})`;
   
@@ -62,8 +97,7 @@ function render(favorites, count, max) {
     const item = document.createElement('div');
     item.className = 'fav-item';
     
-    // Format players as "Team1 vs Team2" or fallback to flat list
-    let playersStr;
+    let playersStr: string;
     if (meta.team1?.length && meta.team2?.length) {
       playersStr = meta.team1.join(', ') + ' vs ' + meta.team2.join(', ');
     } else if (meta.players?.length) {
@@ -87,8 +121,8 @@ function render(favorites, count, max) {
     list.appendChild(item);
   }
 
-  list.querySelectorAll('.fav-header a').forEach(a => {
-    a.addEventListener('click', (e) => {
+  list.querySelectorAll<HTMLAnchorElement>('.fav-header a').forEach((a) => {
+    a.addEventListener('click', (e: MouseEvent): void => {
       e.preventDefault();
       const url = a.dataset.url;
       if (url && url !== '#') {
@@ -97,29 +131,29 @@ function render(favorites, count, max) {
     });
   });
 
-  list.querySelectorAll('.btn-play').forEach(btn => {
-    btn.addEventListener('click', () => {
+  list.querySelectorAll<HTMLButtonElement>('.btn-play').forEach((btn) => {
+    btn.addEventListener('click', (): void => {
       btn.textContent = '...';
-      chrome.runtime.sendMessage({ type: 'launchReplay', matchId: btn.dataset.id }, resp => {
+      chrome.runtime.sendMessage({ type: 'launchReplay', matchId: btn.dataset.id }, (resp: LaunchReplayResponse | undefined): void => {
         btn.textContent = resp?.success ? '\u2713' : '\u2717';
         setTimeout(() => { btn.innerHTML = '&#9654;'; }, 3000);
       });
     });
   });
 
-  list.querySelectorAll('.btn-fav').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const id = btn.dataset.id;
+  list.querySelectorAll<HTMLButtonElement>('.btn-fav').forEach((btn) => {
+    btn.addEventListener('click', (): void => {
+      const id = btn.dataset.id!;
       const isSaved = btn.dataset.saved === 'true';
       if (isSaved) {
         chrome.runtime.sendMessage({ type: 'removeFavorite', matchId: id });
-        btn.innerHTML = '&#9734;'; // outline star
+        btn.innerHTML = '&#9734;';
         btn.style.color = '#6c757d';
         btn.dataset.saved = 'false';
         btn.title = 'Save replay';
       } else {
         chrome.runtime.sendMessage({ type: 'saveFavorite', matchId: id, meta: currentFavorites[id]?.meta || {} });
-        btn.innerHTML = '&#9733;'; // solid star
+        btn.innerHTML = '&#9733;';
         btn.style.color = '#ffd43b';
         btn.dataset.saved = 'true';
         btn.title = 'Remove from saved';
@@ -128,13 +162,12 @@ function render(favorites, count, max) {
   });
 }
 
-function loadFavorites() {
-  chrome.runtime.sendMessage({ type: 'getFavorites' }, resp => {
+function loadFavorites(): void {
+  chrome.runtime.sendMessage({ type: 'getFavorites' }, (resp: GetFavoritesResponse | undefined): void => {
     render(resp?.favorites || {}, resp?.count || 0, resp?.max || 10);
   });
 }
 
-// Refresh popup when favorites are ADDED (e.g. from game page star)
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
   for (const [key, change] of Object.entries(changes)) {

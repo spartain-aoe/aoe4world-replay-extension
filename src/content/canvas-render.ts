@@ -34,7 +34,7 @@ export function drawTimelineCanvasChart(canvas: HTMLCanvasElement & CanvasExtens
   const cssWidth = Math.max(600, rect.width || canvas.clientWidth || 1000);
   const cssHeight = Math.max(320, rect.height || canvas.clientHeight || 500);
   const dpr = window.devicePixelRatio || 1;
-  // Only resize backing store on actual size change to avoid clearing on every hover frame.
+  // Avoid clearing on hover-only redraws.
   const needW = Math.round(cssWidth * dpr);
   const needH = Math.round(cssHeight * dpr);
   if (canvas.width !== needW || canvas.height !== needH) {
@@ -52,7 +52,7 @@ export function drawTimelineCanvasChart(canvas: HTMLCanvasElement & CanvasExtens
   const yMin = geometry.yMin;
   const yMax = geometry.yMax;
 
-  // Dynamic margin.top so AU labels don't clip in 4v4+ games.
+  // Prevent age-up labels clipping in larger games.
   const baseMargin: ChartMargin = { top: AGE_UP_DEFAULT_MARGIN, right: 14, bottom: 32, left: 28 };
   const initialPlotW = cssWidth - baseMargin.left - baseMargin.right;
   const ageUpGameDuration = chart.ageUps?.length ? (labels[labels.length - 1] || 1) : 0;
@@ -242,7 +242,6 @@ export function drawTimelineCanvasChart(canvas: HTMLCanvasElement & CanvasExtens
     }
   }
 
-  // --- Unit icons inside stacked areas ---
   if (chart.type === 'army') {
     const collapsedPlayers = getCollapsedPlayers(chart);
     const maxIconSize = 28;
@@ -264,7 +263,6 @@ export function drawTimelineCanvasChart(canvas: HTMLCanvasElement & CanvasExtens
       if (!areaIcon?.url || !areaIcon.entry?.loaded) continue;
       const areaIconEntry = areaIcon.entry;
 
-      // Find contiguous non-zero segments tall+wide enough for an icon.
       let segStart = -1;
       let segBestIdx = -1;
       let segBestH = 0;
@@ -297,7 +295,7 @@ export function drawTimelineCanvasChart(canvas: HTMLCanvasElement & CanvasExtens
       if (inSegment) placeIcon(ys.stackTop.length);
     }
 
-    // Upgrade dots — collapsed players use COMBINED stackTop.
+    // Collapsed players need the combined stack top.
     for (const item of series) {
       if (item._hidden || !item.upgrades?.length || !item.playerName) continue;
       const ysKey = collapsedPlayers.has(item.playerName)

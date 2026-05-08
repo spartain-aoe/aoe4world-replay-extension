@@ -50,7 +50,6 @@ export function findUnitGroupForUpgrade(
   iconAliasMap: Map<string, string> | null = null
 ): UnitGroup | null {
   const getGroup = (key: string): UnitGroup | null => grouped.get(key) || null;
-  // entry.b is the base unit family id, NOT entry.k (upgrade family id).
   const fromPbgidUp = resolveUpgradeByPbgid(upgradePbgid);
   if (fromPbgidUp?.b) {
     const groupId = fromPbgidUp.b;
@@ -92,7 +91,6 @@ export function findUnitGroupForUpgrade(
     }
   }
 
-  // Permissive: e.g. watch_tower_research → tower; safe because no army merge-key collides.
   if (baseKey) {
     const bk = baseKey.replace(/-/g, '_');
     for (const [unitKey, group] of grouped) {
@@ -109,7 +107,6 @@ export function findUnitGroupForUpgrade(
     }
   }
 
-  // Upgrade names are plural but unit labels are singular.
   if (upgradeName) {
     const cleaned = String(upgradeName)
       .toLowerCase()
@@ -160,10 +157,9 @@ export function unitLabelBase(
   if (fromPbgid?.n) return fromPbgid.n;
   const slug = civDataSlugForPlayer(player);
   if (slug) {
-    const idx = unitDataIndex.get(slug);
-    if (idx) {
-      // Per-civ index keys are snake_case; mergeKey may now be kebab-case.
-      const hit = idx.get(mergeKey) || idx.get(String(mergeKey).replace(/-/g, '_'));
+      const idx = unitDataIndex.get(slug);
+      if (idx) {
+        const hit = idx.get(mergeKey) || idx.get(String(mergeKey).replace(/-/g, '_'));
       if (hit?.name) {
         const cleaned = hit.name.replace(/^(Early|Veteran|Elite|Hardened)\s+/i, '');
         return cleaned || hit.name;

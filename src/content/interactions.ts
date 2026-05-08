@@ -23,7 +23,6 @@ export function attachTimelineHoverGuard(timeline: TimelineElements, chart: Char
   const guardHover = (event: Event): void => {
     const target = event.target as Element | null;
     if (target === timeline.canvas) return;
-    // Skip while canvas hover is active — the mousemove handler owns draw loop and legend.
     if (timeline.chartBox?.__aoe4HoverActive || timeline.canvas?.__aoe4HoverActive) return;
     if (target?.closest?.('.aoe4-army-unit-legend, .aoe4-inline-legend-summary, .aoe4-inline-legend-chevron, .aoe4-legend-breakdown')) return;
     if (!guardFrame) guardFrame = requestAnimationFrame(redraw);
@@ -59,13 +58,11 @@ export function attachPlayerToggle(timeline: TimelineElements, chart: Chart): vo
     });
     if (!player?.name) continue;
     const playerName = player.name;
-    // iconWrapper: first element child (FontAwesome <i> or <svg>).
     const iconWrapper = row.firstElementChild;
     const nameEl = row.querySelector<HTMLElement>('.font-bold, [class*="font-bold"]');
     const onClick = (e: MouseEvent): void => {
       const target = e.target as (Element & Node) | null;
       if (target?.closest?.('.aoe4-inline-legend-summary, .aoe4-inline-legend-chevron, .aoe4-legend-breakdown')) return;
-      // Swallow the page's native row-click in capture phase.
       e.preventDefault();
       e.stopImmediatePropagation();
       const onIcon = !!(iconWrapper && target && iconWrapper.contains(target));
@@ -77,7 +74,6 @@ export function attachPlayerToggle(timeline: TimelineElements, chart: Chart): vo
       const anyVisible = seriesForPlayer.some(s => !s._hidden);
       for (const s of seriesForPlayer) s._hidden = anyVisible;
       row.style.opacity = anyVisible ? '0.35' : '';
-      // Restore inline legend affordances respecting prior open state.
       const wasOpen = row.dataset.aoe4LegendOpen === '1';
       const inlineSummary = row.querySelector<HTMLElement>('.aoe4-inline-legend-summary');
       const chevronEl = row.querySelector<HTMLElement>('.aoe4-inline-legend-chevron');
@@ -86,7 +82,6 @@ export function attachPlayerToggle(timeline: TimelineElements, chart: Chart): vo
       if (inlineSummary) inlineSummary.style.display = anyVisible ? 'none' : (wasOpen ? 'none' : '');
       if (chevronEl) chevronEl.style.display = anyVisible ? 'none' : '';
       if (panel) panel.style.display = anyVisible ? 'none' : (wasOpen ? '' : 'none');
-      // Invalidate cache keys checked by ensureChartRenderCache.
       delete chart._cachedPlotH;
       delete chart._cachedMarginTop;
       delete chart._cachedYMin;

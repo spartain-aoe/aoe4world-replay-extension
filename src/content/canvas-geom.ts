@@ -13,7 +13,6 @@ export function niceFloorForChart(v: number): number {
   return -niceCeilForChart(-v);
 }
 
-// Lead chart needs symmetric domain so toggling a player doesn't shift every gridline.
 export function niceGeometryForChart(chartType: string, rawYMin: number, rawYMax: number): ChartGeometry {
   if (chartType === 'lead') {
     const maxAbs = Math.max(Math.abs(rawYMin), Math.abs(rawYMax)) || 1;

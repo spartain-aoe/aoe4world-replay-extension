@@ -32,14 +32,12 @@ const getArmyTeamSigns = armyTeamSigns as (players: PlayerSummary[], nativePlaye
 
 export function buildArmyCharts(summary: GameSummary, nativeColors: NativeColors, nativePlayerOrder: string[] = []): Chart[] {
   const players: PlayerSummary[] = Array.isArray(summary.players) ? summary.players : [];
-  // End at last resource timestamp; summary.duration can extend past when data
-  // recording stopped, causing a flatline at the end.
+  // Avoid flatlining past recorded samples.
   const lastResourceTime = lastResourceTimestamp(players);
   const gameDuration = lastResourceTime || summary.duration || 0;
   const labels = buildSampleLabels(gameDuration, 10);
   const teamSigns = getArmyTeamSigns(players, nativePlayerOrder);
 
-  // Reorder players to match native legend order.
   const orderedPlayers: PlayerSummary[] = [];
   const used = new Set<PlayerSummary>();
   for (const name of nativePlayerOrder) {
@@ -64,9 +62,7 @@ export function buildArmyCharts(summary: GameSummary, nativeColors: NativeColors
         playerName,
         team: player.team,
         sign,
-        // Use mergeKey (not label) for chart-key uniqueness — civ-substituted
-        // units can collide labels (e.g. tughluq's manatarms and amir_warrior
-        // both → "Amir Warrior"). Defense-in-depth on top of post-merge by label.
+        // Labels can collide across civ substitutions.
         key: `army:${player.profileId || originalIndex}:${item.mergeKey || item.label}`,
         label: `${playerName}: ${item.label}`,
         values: item.values.map((value: number) => value * sign)
@@ -136,8 +132,7 @@ export function buildArmyValueLeadCharts(summary: GameSummary, nativeColors: Nat
 
 export function buildDestroyedValueCharts(summary: GameSummary, nativeColors: NativeColors, nativePlayerOrder: string[] = []): Chart[] {
   const players: PlayerSummary[] = Array.isArray(summary.players) ? summary.players : [];
-  // Hide until unit cost data has loaded for every civ — otherwise the
-  // chart appears with partial values then jumps when more data arrives.
+  // Avoid partial values before cost data finishes loading.
   const slugs = players.map(civDataSlugForPlayer).filter((slug): slug is string => Boolean(slug));
   if (slugs.length === 0 || !slugs.every(s => unitDataLoaded.has(s))) return [];
   const lastResTime = lastResourceTimestamp(players);

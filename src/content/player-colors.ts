@@ -94,13 +94,12 @@ export function sendChartInjectorMessage(message: ChartInjectorMessage): void {
   else pendingColorMessages.push(message);
 }
 
-// Disable: clear pending queue and tell injector to drop its color map.
 function onRecolorDisabled(): void {
   pendingColorMessages.length = 0;
   removeEarlyHideStyle();
   if (chartInjectorReady) {
     try { window.postMessage({ source: 'aoe4-color-ext', type: 'disable-colors' }, '*'); }
-    catch (_) { /* ignore */ }
+    catch (_) { }
   }
 }
 

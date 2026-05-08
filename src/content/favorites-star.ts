@@ -18,7 +18,11 @@ interface FavoriteResponse {
 
 function safeSendMessage<TResponse>(payload: unknown, cb?: (response: TResponse | null) => void): void {
   try {
-    chrome.runtime.sendMessage(payload as any, cb as any);
+    if (cb) {
+      chrome.runtime.sendMessage<unknown, TResponse>(payload, (response: TResponse): void => cb(response ?? null));
+      return;
+    }
+    void chrome.runtime.sendMessage(payload);
   } catch {
     cb?.(null);
   }

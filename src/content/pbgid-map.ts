@@ -19,9 +19,6 @@ let pbgidMapPromise: Promise<void> | null = null;
 export function isPbgidMapLoaded(): boolean { return pbgidMapLoaded; }
 
 export function ensurePbgidMap(onLoaded?: () => void): Promise<void> {
-  // onLoaded is "fire-once when the map JUST became available". When already
-  // loaded we return resolved promise WITHOUT invoking onLoaded — invoking it
-  // creates an infinite microtask chain via installTimelineMetrics.
   if (pbgidMapLoaded) return Promise.resolve();
   if (!pbgidMapPromise) {
     pbgidMapPromise = (PBGID_MAP_URL ? fetch(PBGID_MAP_URL) : Promise.reject(new Error('no_runtime_url')))
@@ -30,7 +27,6 @@ export function ensurePbgidMap(onLoaded?: () => void): Promise<void> {
         for (const [pbgid, entry] of Object.entries(json.units || {})) pbgidUnitsMap.set(Number(pbgid), entry);
         for (const [pbgid, entry] of Object.entries(json.technologies || {})) pbgidTechsMap.set(Number(pbgid), entry);
         for (const [pbgid, entry] of Object.entries(json.upgrades || {})) pbgidUpgradesMap.set(Number(pbgid), entry);
-        // Only mark loaded on success — null promise on failure so next caller retries.
         pbgidMapLoaded = true;
       })
       .catch((err: unknown) => {

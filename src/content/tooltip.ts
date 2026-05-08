@@ -102,7 +102,6 @@ export function attachCanvasTooltip(canvas: TooltipCanvas, chart: Chart, timelin
         armyMiniTooltip.__lastClosest = undefined;
       }
       if (chart.type === 'army' && getActiveDrag(timeline?.chartBox, chart)) {
-        // mid-drag: leave legend alone until mouseup commits
       } else if (chart.type === 'army' && getActiveRange(timeline?.chartBox, chart)) {
         applyRangeLegend(chart, timeline);
       } else {

@@ -1,7 +1,3 @@
-// Shared type definitions for aoe4-replay-share-api-charts
-
-// --- Game data (from aoe4world API) ---
-
 export interface ResourceDict {
   food: number;
   wood: number;
@@ -86,18 +82,14 @@ export interface ReplayPlayer {
   slot?: number;
 }
 
-// --- PbgId map entries ---
-
 export interface PbgidEntry {
-  n: string;        // display name
-  i?: string;       // icon filename
-  c?: string;       // civ restriction
+  n: string;
+  i?: string;
+  c?: string;
   k?: string;
   b?: string;
-  u?: number;       // upgrade-of pbgid
+  u?: number;
 }
-
-// --- Chart data structures ---
 
 export interface ChartSeries {
   key?: string;
@@ -181,8 +173,6 @@ export interface StackedYCache {
   stackTop: Float32Array;
 }
 
-// --- Legend node metadata ---
-
 export interface LegendUnitNode {
   rowEl: HTMLElement;
   totalEl: HTMLElement;
@@ -200,8 +190,6 @@ export interface LegendSummaryNode {
 }
 
 export type LegendNodeMeta = LegendUnitNode | LegendSummaryNode;
-
-// --- Timeline DOM references ---
 
 export interface TimelineElements {
   root: HTMLElement & TimelineRootExtensions;
@@ -244,8 +232,6 @@ export interface CanvasExtensions {
   __aoe4HoverActive?: boolean;
 }
 
-// --- Range/drag state ---
-
 export interface RangeState {
   chartValue: string;
   startIdx: number;
@@ -257,8 +243,6 @@ export interface DragState {
   anchorIdx: number;
   currentIdx: number;
 }
-
-// --- Age-up data ---
 
 export interface AgeUp {
   gameTimeSec: number;
@@ -329,8 +313,6 @@ export interface PlayerToggleHandler {
   onClick: (event: MouseEvent) => void;
 }
 
-// --- Unit data cache ---
-
 export interface UnitDataEntry {
   id?: string;
   icon?: string;
@@ -372,8 +354,6 @@ export interface UnitIconTarget {
   label?: string;
   unitLabel?: string;
 }
-
-// --- Settings ---
 
 export interface Settings {
   recolorSwatches: boolean;

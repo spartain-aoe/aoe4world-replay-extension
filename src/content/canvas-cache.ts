@@ -7,7 +7,6 @@ function isLegendSummaryNode(meta: LegendNodeMeta): meta is LegendSummaryNode {
   return 'panelEl' in meta;
 }
 
-// Without this cache, summaryScaleY runs per point per frame — cursor lag is real on army charts.
 export function ensureChartRenderCache(chart: Chart, margin: ChartMargin, plotH: number): Map<string, Float32Array | StackedYCache> {
   const { yMin, yMax } = chart._geometry || { yMin: 0, yMax: 1 };
   if (

@@ -51,7 +51,6 @@ export function lookupReplayColorIndex(summary: GameSummary | null | undefined, 
       return civsOverlap(summaryCiv, String(rp.civilization).toLowerCase());
     });
     if (byNameCiv && validColor(byNameCiv.color)) return byNameCiv.color;
-    // Variant civs don't civ-match; unique name is still unambiguous.
     const byNameOnly = replayPlayers.filter(rp => normalizeName(rp.name) === summaryName);
     if (byNameOnly.length === 1 && validColor(byNameOnly[0].color)) return byNameOnly[0].color;
   }

@@ -1,61 +1,90 @@
-// chart-injector.js — runs in the page MAIN world, mutates aoe4world's Chart.js
-// instances AND the small player-color swatches scattered around the page
-// (Timeline panel, Comparison rows, Build Order headers).
-//
-// Communicates with content.js via window.postMessage.
 (() => {
+  type ChartDataset = {
+    label?: string;
+    borderColor?: unknown;
+    backgroundColor?: string | ((...args: readonly unknown[]) => unknown);
+    pointBorderColor?: unknown;
+    pointBackgroundColor?: unknown;
+  };
+
+  type ChartInstance = {
+    data?: {
+      datasets?: ChartDataset[];
+    };
+    update(mode?: string): void;
+  };
+
+  type ChartPrototype = {
+    update: (...args: unknown[]) => unknown;
+  };
+
+  type ChartLibrary = ((...args: unknown[]) => unknown) & {
+    prototype: ChartPrototype;
+    getChart: (...args: unknown[]) => unknown;
+    instances: Record<string, ChartInstance>;
+  };
+
+  type ChartModule = Record<string, unknown>;
+
+  type ApplyColorsPayload = {
+    colorByName?: Record<string, string>;
+  };
+
+  type WindowMessage = ApplyColorsPayload & {
+    source?: string;
+    type?: string;
+    error?: string;
+  };
+
   const SOURCE = 'aoe4-color-ext';
   const RECOLOR_ATTR = 'data-aoe4-recolored';
   const HIDE_STYLE_ID = '__aoe4-color-ext-hide';
-  let chartLib = null;
-  let colorByName = new Map();
-  // Once flipped to true by `disable-colors`, stay disabled for the lifetime
-  // of this page. Defends against stale `apply-colors`/`clear-colors`
-  // messages that may have been queued before disable arrived. Re-enable
-  // requires page reload (popup banner tells the user).
+  let chartLib: ChartLibrary | null = null;
+  let colorByName = new Map<string, string>();
   let disabled = false;
   let patched = false;
-  let domObserver = null;
-  let pendingRescan = null;
-  const nameKeyFn = name => String(name || '').trim().toLowerCase();
+  let domObserver: MutationObserver | null = null;
+  let pendingRescan: number | null = null;
+  const nameKeyFn = (name: unknown): string => String(name || '').trim().toLowerCase();
 
-  function findChartBundleUrl() {
+  function findChartBundleUrl(): string | null {
     const candidates = [
-      ...document.querySelectorAll('link[rel="modulepreload"]'),
-      ...document.querySelectorAll('script[type="module"]'),
+      ...document.querySelectorAll<HTMLLinkElement>('link[rel="modulepreload"]'),
+      ...document.querySelectorAll<HTMLScriptElement>('script[type="module"]'),
     ];
     for (const el of candidates) {
-      const url = el.href || el.src;
+      const url = 'href' in el ? el.href : el.src;
       if (url && /\/chart-[a-f0-9]+\.js(?:\?|$)/i.test(url)) return url;
     }
     return null;
   }
 
-  function findChartExport(mod) {
+  function findChartExport(mod: ChartModule): ChartLibrary | null {
     for (const value of Object.values(mod)) {
-      if (typeof value === 'function' && typeof value.getChart === 'function' && value.instances) {
-        return value;
+      const candidate = value as Partial<ChartLibrary> | undefined;
+      if (typeof value === 'function' && typeof candidate?.getChart === 'function' && candidate.instances) {
+        return value as unknown as ChartLibrary;
       }
     }
     return null;
   }
 
-  async function ensureChartLib() {
+  async function ensureChartLib(): Promise<ChartLibrary> {
     if (chartLib) return chartLib;
     const url = findChartBundleUrl();
     if (!url) throw new Error('chart_bundle_not_found');
-    const mod = await import(url);
+    const mod = await import(url) as ChartModule;
     const Chart = findChartExport(mod);
     if (!Chart) throw new Error('chart_export_not_found');
     chartLib = Chart;
     return Chart;
   }
 
-  function applyColorsToChart(chart) {
+  function applyColorsToChart(chart: ChartInstance | null | undefined): boolean {
     if (!chart || !chart.data || !Array.isArray(chart.data.datasets)) return false;
     if (!colorByName.size) return false;
     let changed = false;
-    for (const ds of chart.data.datasets) {
+    for (const ds of chart.data.datasets as ChartDataset[]) {
       const key = nameKeyFn(ds.label);
       if (!key) continue;
       const hex = colorByName.get(key);
@@ -77,18 +106,18 @@
     return changed;
   }
 
-  function patchChartPrototype(Chart) {
+  function patchChartPrototype(Chart: ChartLibrary): void {
     if (patched) return;
     patched = true;
     const proto = Chart.prototype;
     const origUpdate = proto.update;
-    proto.update = function patchedUpdate(...args) {
+    proto.update = function patchedUpdate(this: ChartInstance, ...args: unknown[]): unknown {
       try { applyColorsToChart(this); } catch (_) {}
       return origUpdate.apply(this, args);
     };
   }
 
-  function applyToAllExistingCharts(Chart) {
+  function applyToAllExistingCharts(Chart: ChartLibrary): number {
     if (!Chart || !Chart.instances) return 0;
     let updated = 0;
     for (const chart of Object.values(Chart.instances)) {
@@ -99,23 +128,15 @@
     return updated;
   }
 
-  // ---- DOM swatch coloring ---------------------------------------------------
-
-  // Walk forward through siblings looking for an element whose normalized text
-  // matches a known player name. We accept the immediate next sibling and the
-  // one after that (some panels insert flag images in between).
-  function findAdjacentPlayerName(startEl) {
+  function findAdjacentPlayerName(startEl: Element | null | undefined): string | null {
     let cur = startEl?.nextElementSibling;
     let hops = 0;
     while (cur && hops < 4) {
       const text = (cur.textContent || '').trim();
       if (text && colorByName.has(nameKeyFn(text))) return nameKeyFn(text);
-      // Also check if cur is a flag wrapper followed by a name link
       cur = cur.nextElementSibling;
       hops++;
     }
-    // For Pattern B (timeline legend) the colored div may have a sibling div
-    // whose direct child <a>/<div> contains the name.
     cur = startEl?.nextElementSibling;
     hops = 0;
     while (cur && hops < 4) {
@@ -127,7 +148,7 @@
     return null;
   }
 
-  function recolorSpanSwatch(span) {
+  function recolorSpanSwatch(span: HTMLSpanElement): boolean {
     const nameKey = findAdjacentPlayerName(span);
     if (!nameKey) return false;
     const hex = colorByName.get(nameKey);
@@ -142,7 +163,7 @@
     return true;
   }
 
-  function recolorIconSwatch(icon) {
+  function recolorIconSwatch(icon: HTMLElement): boolean {
     const wrapper = icon.parentElement;
     if (!wrapper || !wrapper.style?.color) return false;
     const nameKey = findAdjacentPlayerName(wrapper);
@@ -158,32 +179,29 @@
     return true;
   }
 
-  function applyDomSwatchColors() {
+  function applyDomSwatchColors(): number {
     if (!colorByName.size) return 0;
     let count = 0;
-    // Pattern A: small rounded-full spans with inline background
-    document.querySelectorAll('span.rounded-full.w-2.h-2[style*="background"]').forEach(el => {
+    document.querySelectorAll<HTMLSpanElement>('span.rounded-full.w-2.h-2[style*="background"]').forEach((el) => {
       try { if (recolorSpanSwatch(el)) count++; } catch (_) {}
     });
-    // Pattern B: fa-circle-check icons inside an inline-color wrapper
-    document.querySelectorAll('div[style*="color"] > i.fa-circle-check').forEach(el => {
+    document.querySelectorAll<HTMLElement>('div[style*="color"] > i.fa-circle-check').forEach((el) => {
       try { if (recolorIconSwatch(el)) count++; } catch (_) {}
     });
     return count;
   }
 
-  function scheduleDomRescan() {
+  function scheduleDomRescan(): void {
     if (pendingRescan) return;
-    pendingRescan = requestAnimationFrame(() => {
+    pendingRescan = requestAnimationFrame((): void => {
       pendingRescan = null;
       applyDomSwatchColors();
     });
   }
 
-  function ensureDomObserver() {
+  function ensureDomObserver(): void {
     if (domObserver) return;
-    domObserver = new MutationObserver(mutations => {
-      // Filter: only react to mutations that could plausibly affect swatches.
+    domObserver = new MutationObserver((mutations: MutationRecord[]): void => {
       for (const m of mutations) {
         if (m.type === 'childList' && (m.addedNodes.length || m.removedNodes.length)) {
           scheduleDomRescan();
@@ -203,18 +221,14 @@
     });
   }
 
-  function clearRecoloredAttrs() {
-    document.querySelectorAll('[' + RECOLOR_ATTR + ']').forEach(el => {
+  function clearRecoloredAttrs(): void {
+    document.querySelectorAll<HTMLElement>('[' + RECOLOR_ATTR + ']').forEach((el) => {
       el.removeAttribute(RECOLOR_ATTR);
     });
   }
 
-  function ensureHideStyle() {
-    // If early-hide.js already injected, nothing to do.
+  function ensureHideStyle(): void {
     if (document.getElementById(HIDE_STYLE_ID)) return;
-    // SPA navigation may have brought us back to a game page after the
-    // early-hide style was removed. Re-inject it so new dots stay hidden
-    // until we recolor them.
     const css = `
       span.rounded-full.w-2.h-2[style*="background"]:not([${RECOLOR_ATTR}]) {
         opacity: 0 !important;
@@ -235,45 +249,35 @@
     (document.head || document.documentElement).appendChild(style);
   }
 
-  // ---- Message handling ------------------------------------------------------
-
-  async function handleApplyColors(payload) {
+  async function handleApplyColors(payload: ApplyColorsPayload | null | undefined): Promise<void> {
     if (disabled) return;
     const map = payload?.colorByName;
     if (!map || typeof map !== 'object') return;
-    colorByName = new Map(Object.entries(map).map(([k, v]) => [nameKeyFn(k), v]));
+    colorByName = new Map<string, string>(Object.entries(map).map(([k, v]) => [nameKeyFn(k), v]));
     if (!colorByName.size) return;
     ensureHideStyle();
     ensureDomObserver();
-    // Apply to DOM swatches immediately.
     applyDomSwatchColors();
-    // Apply to Chart.js instances.
     try {
       const Chart = await ensureChartLib();
       patchChartPrototype(Chart);
       applyToAllExistingCharts(Chart);
     } catch (err) {
-      window.postMessage({ source: SOURCE, type: 'error', error: err?.message || String(err) }, '*');
+      const message = err instanceof Error ? err.message : String(err);
+      window.postMessage({ source: SOURCE, type: 'error', error: message }, '*');
     }
   }
 
-  function handleClearColors() {
+  function handleClearColors(): void {
     if (disabled) return;
-    colorByName = new Map();
-    // Strip our recolor markers so any leftover DOM nodes get re-hidden by
-    // CSS until new colors arrive. (Most SPA frameworks unmount old nodes,
-    // but in case any are reused this prevents stale colors leaking through.)
+    colorByName = new Map<string, string>();
     clearRecoloredAttrs();
     ensureHideStyle();
   }
 
-  // Live "user disabled the recolor setting" — different from clear-colors:
-  // we do NOT re-inject the hide style and we DO disconnect the observer.
-  // Already-recolored DOM stays as-is (reload required for full revert) but no
-  // new mutations or messages will be acted on.
-  function handleDisableColors() {
+  function handleDisableColors(): void {
     disabled = true;
-    colorByName = new Map();
+    colorByName = new Map<string, string>();
     if (domObserver) {
       try { domObserver.disconnect(); } catch (_) {}
       domObserver = null;
@@ -286,7 +290,7 @@
     if (hideStyle) hideStyle.remove();
   }
 
-  window.addEventListener('message', event => {
+  window.addEventListener('message', (event: MessageEvent<WindowMessage>): void => {
     if (event.source !== window) return;
     const data = event.data;
     if (!data || data.source !== SOURCE) return;

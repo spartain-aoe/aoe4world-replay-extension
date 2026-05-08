@@ -22,9 +22,8 @@ export function onSettingsChange(cb: SettingsChangeSubscriber): () => boolean {
 }
 
 function writeRecolorHint(enabled: boolean): void {
-  // Mirror recolor pref to page-origin localStorage so early-hide.js can decide synchronously.
   try { localStorage.setItem(RECOLOR_HINT_KEY, enabled ? '1' : '0'); }
-  catch (_) { /* storage may be denied */ }
+  catch (_) { }
 }
 
 export function removeEarlyHideStyle(): void {
@@ -51,7 +50,6 @@ chrome.storage.local.get('settings', ({ settings }: { settings?: Partial<Setting
   applySettings(settings);
   __settingsReadyResolve?.();
   if (!SETTINGS.recolorSwatches) {
-    // Drop early-hide style so swatches don't stay invisible.
     removeEarlyHideStyle();
   }
 });

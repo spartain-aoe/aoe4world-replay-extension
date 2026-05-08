@@ -73,7 +73,6 @@ export function appendTooltipRow(
   value.textContent = Math.round((chart.type === 'army' || chart.type === 'lead') ? Math.abs(row.value) : row.value).toLocaleString();
   const label = document.createElement('span');
   if (omitPlayerName) {
-    // Cached base name avoids DOM scraping race with age variants.
     label.textContent = row.item.unitLabel || row.item.label || '';
   } else {
     label.textContent = row.item.label;

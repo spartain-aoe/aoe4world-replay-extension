@@ -21,9 +21,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Type check
+        run: npm run typecheck
+
       - name: Run tests
-        # npm test chains: fixtures → adversarial → build:content → unit + regression
-        # build:data is intentionally skipped — committed pbgid-map.json is the
-        # source of truth and the build:data script needs network access to
-        # raw.githubusercontent.com.
         run: npm test

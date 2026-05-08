@@ -1,0 +1,802 @@
+import { extractPlayerColors, extractPlayerColorsStructural, setDebug as setParserDebug, type ExtractPlayerColorsResult, type PlayerColorInfo } from './replay-parser.ts';
+interface Settings {
+    recolorSwatches: boolean;
+    injectCharts: boolean;
+    debugLogs: boolean;
+}
+interface PatchInfo {
+    current: number;
+    patches: number[];
+    time: number;
+}
+interface ReplayFile {
+    datatype: number;
+    size: number;
+    url?: string;
+    matchhistory_id?: string | number;
+}
+interface ReplayApiResponse {
+    result?: {
+        code?: number;
+    };
+    replayFiles?: ReplayFile[];
+    patch?: string | number;
+}
+interface FavoriteEntry {
+    matchId?: string | number;
+    meta?: Record<string, unknown>;
+    replayData?: string;
+    patch?: number | null;
+    savedAt?: number;
+}
+interface UnitDataItem {
+    id: string;
+    baseId: string;
+    name: string;
+    age: number;
+    pbgid: number;
+    attribName: string;
+    icon: string;
+    classes: string[];
+    costs: unknown;
+}
+interface RawUnitDataItem {
+    id?: string;
+    baseId?: string;
+    name?: string;
+    age?: number;
+    pbgid?: number;
+    attribName?: string;
+    icon?: string;
+    classes?: unknown;
+    costs?: unknown;
+}
+interface ColorCacheEntry {
+    players?: PlayerColorInfo[];
+    savedAt?: number;
+    failedAt?: number;
+    error?: string;
+    softFailure?: boolean;
+}
+interface UnitDataCacheEntry {
+    units?: UnitDataItem[];
+    savedAt?: number;
+    failedAt?: number;
+    error?: string;
+}
+interface CheckReplaysMessage {
+    type: 'checkReplays';
+    gameIds: Array<string | number>;
+}
+interface LaunchReplayMessage {
+    type: 'launchReplay';
+    matchId: string | number;
+}
+interface SaveFavoriteMessage {
+    type: 'saveFavorite';
+    matchId: string | number;
+    meta?: Record<string, unknown>;
+}
+interface RemoveFavoriteMessage {
+    type: 'removeFavorite';
+    matchId: string | number;
+}
+interface GetFavoritesMessage {
+    type: 'getFavorites';
+}
+interface IsFavoriteMessage {
+    type: 'isFavorite';
+    matchId: string | number;
+}
+interface GetCurrentPatchMessage {
+    type: 'getCurrentPatch';
+}
+interface GetPlayerColorsMessage {
+    type: 'getPlayerColors';
+    matchId: string | number;
+}
+interface GetUnitDataMessage {
+    type: 'getUnitData';
+    civSlugs?: unknown[];
+}
+type BackgroundMessage = CheckReplaysMessage | LaunchReplayMessage | SaveFavoriteMessage | RemoveFavoriteMessage | GetFavoritesMessage | IsFavoriteMessage | GetCurrentPatchMessage | GetPlayerColorsMessage | GetUnitDataMessage;
+type ChromeMessageResponder = (response?: unknown) => void;
+type StorageItems = Record<string, unknown>;
+interface CheckReplaysResponse {
+    available: Record<string, boolean>;
+    rateLimited?: boolean;
+    gamePatches?: Record<string, number>;
+    currentPatch?: number | null;
+    knownPatches?: number[];
+}
+type GetPlayerColorsResponse = {
+    success: true;
+    players: PlayerColorInfo[];
+    cached: boolean;
+} | {
+    success: false;
+    error: string;
+    cached?: boolean;
+    rateLimited?: boolean;
+    disabled?: boolean;
+};
+type GetUnitDataResponse = {
+    success: true;
+    units: Record<string, UnitDataItem[]>;
+} | {
+    success: false;
+    error: string;
+    disabled?: boolean;
+};
+interface PlayerStringDiff {
+    playerId: string;
+    field: 'name' | 'civilization';
+    heuristic: string | null;
+    structural: string | null;
+}
+const SETTINGS_DEFAULTS: Readonly<Settings> = Object.freeze({ recolorSwatches: false, injectCharts: true, debugLogs: false });
+let SETTINGS: Settings = { ...SETTINGS_DEFAULTS };
+let __settingsReadyResolve: (() => void) | undefined;
+const settingsReady: Promise<void> = new Promise<void>(r => { __settingsReadyResolve = r; });
+function applySettings(stored?: Partial<Settings> | null): void {
+    SETTINGS = { ...SETTINGS_DEFAULTS, ...(stored || {}) };
+    setParserDebug(SETTINGS.debugLogs);
+}
+chrome.storage.local.get('settings', ({ settings }: {
+    settings?: Partial<Settings>;
+}) => {
+    applySettings(settings);
+    __settingsReadyResolve!();
+});
+chrome.storage.onChanged.addListener((changes: Record<string, chrome.storage.StorageChange>, area: string) => {
+    if (area !== 'local' || !changes.settings)
+        return;
+    applySettings(changes.settings.newValue as Partial<Settings> | undefined);
+});
+const dbg = (...args: unknown[]): void => { if (SETTINGS.debugLogs)
+    console.log(...args); };
+const dbgWarn = (...args: unknown[]): void => { if (SETTINGS.debugLogs)
+    console.warn(...args); };
+const REPLAY_API = 'https://aoe-api.worldsedgelink.com/community/leaderboard/getReplayFiles';
+const PATCH_API = 'https://aoe4world.com/api/v0/stats/rm_solo/civilizations';
+const UA = 'AoE4ReplayLauncher-ChromeExt/0.4 (https://github.com/spartain-aoe/aoe4world-replay-extension, discord:591850595498065931)';
+async function parseReplayApiJson(response: Response, what = 'replay API'): Promise<ReplayApiResponse> {
+    if (response.status === 429) {
+        recordBackoff(what);
+        throw new Error('Rate limited');
+    }
+    if (!response.ok)
+        throw new Error(`HTTP ${response.status} from ${what}`);
+    const ct = response.headers.get('content-type') || '';
+    if (!ct.includes('json')) {
+        try {
+            await response.text();
+        }
+        catch (_) { }
+        throw new Error(`Non-JSON response from ${what} (likely an error page)`);
+    }
+    const json = await response.json() as ReplayApiResponse;
+    recordBackoffSuccess();
+    return json;
+}
+const NATIVE_HOST = 'com.aoe4.replay_launcher';
+const MAX_FAVORITES = 10;
+const COLORS_CACHE_KEY_PREFIX = 'colors_v3_';
+const COLORS_CACHE_LIMIT = 50;
+const COLORS_NEGATIVE_TTL_MS = 60 * 60 * 1000;
+const COLORS_SOFT_FAILURE_TTL_MS = 10 * 60 * 1000;
+const inFlightColorRequests = new Map<string, Promise<GetPlayerColorsResponse>>();
+const BACKOFF_BASE_MS = 5000;
+const BACKOFF_MAX_MS = 60000;
+let backoffUntil = 0;
+let backoffStreak = 0;
+function recordBackoff(what = 'replay API'): number {
+    backoffStreak++;
+    const delay = Math.min(BACKOFF_BASE_MS * Math.pow(2, backoffStreak - 1), BACKOFF_MAX_MS);
+    backoffUntil = Date.now() + delay;
+    console.warn(`[replay] 429 from ${what} — backing off ${Math.round(delay / 1000)}s (streak ${backoffStreak})`);
+    return delay;
+}
+function recordBackoffSuccess(): void {
+    if (backoffStreak > 0) {
+        dbg(`[replay] Backoff cleared after ${backoffStreak} 429(s)`);
+        backoffStreak = 0;
+    }
+}
+let currentPatch: number | null = null;
+let knownPatches: number[] = [];
+async function ensureCurrentPatch(): Promise<number | null> {
+    if (currentPatch)
+        return currentPatch;
+    const cached = await chrome.storage.local.get('patchInfo') as {
+        patchInfo?: PatchInfo;
+    };
+    if (cached.patchInfo && Date.now() - cached.patchInfo.time < 24 * 60 * 60 * 1000) {
+        currentPatch = cached.patchInfo.current;
+        knownPatches = cached.patchInfo.patches || [];
+        return currentPatch;
+    }
+    await refreshCurrentPatch();
+    return currentPatch;
+}
+async function refreshCurrentPatch(): Promise<void> {
+    try {
+        const r = await fetch(PATCH_API, { headers: { 'User-Agent': UA, 'Accept': 'application/json' } });
+        const data = await r.json() as {
+            patch?: string | number;
+        };
+        const patches = String(data.patch).split(',').map(Number).filter(n => n > 0).sort((a, b) => b - a);
+        if (patches.length > 0) {
+            const oldPatch = currentPatch;
+            currentPatch = patches[0];
+            knownPatches = patches;
+            chrome.storage.local.set({ patchInfo: { current: currentPatch, patches: knownPatches, time: Date.now() } });
+            dbg(`[replay] Patches: ${knownPatches.join(', ')} (current: ${currentPatch})`);
+        }
+    }
+    catch (e) {
+        console.warn('[replay] Failed to fetch patch info:', (e as {
+            message?: string;
+        })?.message || String(e));
+    }
+}
+function updatePatchFromUrl(url: string): void {
+    const m = url.match(/\/(\d{4,})\/M_/);
+    if (m) {
+        const patch = Number(m[1]);
+        if (patch > (currentPatch || 0)) {
+            currentPatch = patch;
+            if (!knownPatches.includes(patch))
+                knownPatches.unshift(patch);
+            knownPatches.sort((a, b) => b - a);
+            chrome.storage.local.set({ patchInfo: { current: currentPatch, patches: knownPatches, time: Date.now() } });
+            dbg(`[replay] Patch updated from replay URL: ${currentPatch}`);
+        }
+    }
+}
+settingsReady.then(() => {
+    ensureCurrentPatch();
+});
+(async () => {
+    try {
+        const all = await chrome.storage.local.get(null) as StorageItems;
+        const stale = Object.keys(all).filter(k => k.startsWith('colors_') && !k.startsWith(COLORS_CACHE_KEY_PREFIX));
+        if (stale.length) {
+            await chrome.storage.local.remove(stale);
+            dbg(`[replay] Removed ${stale.length} stale color cache entries`);
+        }
+    }
+    catch (e) {
+        console.warn('[replay] Color cache cleanup failed:', (e as {
+            message?: string;
+        })?.message || String(e));
+    }
+})();
+chrome.runtime.onMessage.addListener((msg: BackgroundMessage, sender: chrome.runtime.MessageSender, sendResponse: ChromeMessageResponder): boolean | void => {
+    if (msg.type === 'checkReplays') {
+        const now = Date.now();
+        if (now < backoffUntil) {
+            dbg(`[replay] Backoff active, skipping (${Math.round((backoffUntil - now) / 1000)}s left)`);
+            sendResponse({ available: {}, rateLimited: true } satisfies CheckReplaysResponse);
+            return true;
+        }
+        const ids = msg.gameIds.slice(0, 10);
+        const url = `${REPLAY_API}?matchIDs=[${ids.join(',')}]&title=age4`;
+        dbg(`[replay] Fetching ${ids.length} IDs: ${ids.join(',')}`);
+        fetch(url, { headers: { 'User-Agent': UA } })
+            .then(r => parseReplayApiJson(r, 'replay metadata'))
+            .then(data => {
+            const available: Record<string, boolean> = {};
+            const gamePatches: Record<string, number> = {};
+            if (data.result?.code === 0 && data.replayFiles) {
+                for (const file of data.replayFiles) {
+                    if (file.datatype === 0 && file.size > 0) {
+                        available[String(file.matchhistory_id)] = true;
+                    }
+                    if (file.url) {
+                        updatePatchFromUrl(file.url);
+                        const pm = file.url.match(/\/(\d{4,})\/M_/);
+                        if (pm)
+                            gamePatches[String(file.matchhistory_id)] = Number(pm[1]);
+                    }
+                }
+            }
+            dbg(`[replay] Got ${Object.keys(available).length} available out of ${ids.length}`);
+            sendResponse({ available, gamePatches, currentPatch, knownPatches });
+        })
+            .catch((e: unknown) => {
+            const message = (e as {
+                message?: string;
+            })?.message || String(e);
+            console.warn('[replay] Error:', message);
+            sendResponse({ available: {}, rateLimited: message.includes('Rate limited') } satisfies CheckReplaysResponse);
+        });
+        return true;
+    }
+    if (msg.type === 'launchReplay') {
+        const favKey = 'fav_' + msg.matchId;
+        chrome.storage.local.get(favKey, (result: Record<string, FavoriteEntry | undefined>) => {
+            const fav = result[favKey];
+            if (fav?.replayData) {
+                chrome.runtime.sendNativeMessage(NATIVE_HOST, {
+                    action: 'launchReplayData',
+                    matchId: msg.matchId,
+                    replayB64: fav.replayData
+                }, (response: unknown) => {
+                    if (chrome.runtime.lastError) {
+                        sendResponse({ success: false, error: chrome.runtime.lastError.message, needsInstall: true });
+                    }
+                    else {
+                        sendResponse(response);
+                    }
+                });
+            }
+            else {
+                chrome.runtime.sendNativeMessage(NATIVE_HOST, {
+                    action: 'launchReplay',
+                    matchId: msg.matchId
+                }, (response: unknown) => {
+                    if (chrome.runtime.lastError) {
+                        sendResponse({ success: false, error: chrome.runtime.lastError.message, needsInstall: true });
+                    }
+                    else {
+                        sendResponse(response);
+                    }
+                });
+            }
+        });
+        return true;
+    }
+    if (msg.type === 'saveFavorite') {
+        if (Date.now() < backoffUntil) {
+            const remainMs = backoffUntil - Date.now();
+            sendResponse({
+                success: false,
+                error: `Rate limited — try again in ${Math.ceil(remainMs / 1000)}s`,
+                rateLimited: true,
+            });
+            return false;
+        }
+        const url = `${REPLAY_API}?matchIDs=[${msg.matchId}]&title=age4`;
+        chrome.storage.local.get(null, (allData: StorageItems) => {
+            const favCount = Object.keys(allData).filter(k => k.startsWith('fav_')).length;
+            if (favCount >= MAX_FAVORITES) {
+                sendResponse({ success: false, error: `Maximum ${MAX_FAVORITES} favorites reached` });
+                return;
+            }
+            fetch(url, { headers: { 'User-Agent': UA } })
+                .then(r => parseReplayApiJson(r, 'replay metadata'))
+                .then(data => {
+                if (data.result?.code !== 0 || !data.replayFiles)
+                    throw new Error('No replay data');
+                const file = data.replayFiles.find((f: ReplayFile) => f.datatype === 0 && f.size > 0);
+                if (!file)
+                    throw new Error('No replay file');
+                const replayUrl = file.url as string;
+                const pm = replayUrl.match(/\/(\d{4,})\/M_/);
+                const patch = pm ? Number(pm[1]) : null;
+                return fetch(replayUrl).then(async (r) => {
+                    if (!r.ok)
+                        throw new Error(`HTTP ${r.status} downloading replay`);
+                    return { arrayBuffer: r.arrayBuffer(), patch };
+                });
+            })
+                .then(async ({ arrayBuffer, patch }: {
+                arrayBuffer: Promise<ArrayBuffer>;
+                patch: number | null;
+            }) => {
+                const buf = await arrayBuffer;
+                const b64 = arrayBufferToBase64(buf);
+                const favKey = 'fav_' + msg.matchId;
+                chrome.storage.local.set({
+                    [favKey]: {
+                        matchId: msg.matchId,
+                        meta: msg.meta || {},
+                        replayData: b64,
+                        patch,
+                        savedAt: Date.now()
+                    }
+                }, () => {
+                    dbg(`[replay] Saved favorite ${msg.matchId} (${Math.round(b64.length / 1024)}KB, patch ${patch})`);
+                    sendResponse({ success: true });
+                });
+            })
+                .catch((e: unknown) => {
+                const message = (e as {
+                    message?: string;
+                })?.message || String(e);
+                console.warn('[replay] Save failed:', message);
+                sendResponse({ success: false, error: message });
+            });
+        });
+        return true;
+    }
+    if (msg.type === 'removeFavorite') {
+        chrome.storage.local.remove('fav_' + msg.matchId, () => {
+            sendResponse({ success: true });
+        });
+        return true;
+    }
+    if (msg.type === 'getFavorites') {
+        chrome.storage.local.get(null, (allData: StorageItems) => {
+            const favs: Record<string, {
+                meta: Record<string, unknown> | undefined;
+                savedAt: number | undefined;
+            }> = {};
+            for (const [key, val] of Object.entries(allData)) {
+                if (key.startsWith('fav_')) {
+                    const favorite = val as FavoriteEntry;
+                    favs[key.slice(4)] = { meta: favorite.meta, savedAt: favorite.savedAt };
+                }
+            }
+            sendResponse({ favorites: favs, count: Object.keys(favs).length, max: MAX_FAVORITES });
+        });
+        return true;
+    }
+    if (msg.type === 'isFavorite') {
+        chrome.storage.local.get('fav_' + msg.matchId, (result: Record<string, FavoriteEntry | undefined>) => {
+            const fav = result['fav_' + msg.matchId];
+            sendResponse({ isFavorite: !!fav, patch: fav?.patch || null });
+        });
+        return true;
+    }
+    if (msg.type === 'getCurrentPatch') {
+        ensureCurrentPatch().then(() => {
+            sendResponse({ patch: currentPatch || null, patches: knownPatches });
+        });
+        return true;
+    }
+    if (msg.type === 'getPlayerColors') {
+        const matchId = String(msg.matchId);
+        if (!matchId) {
+            sendResponse({ success: false, error: 'matchId required' });
+            return false;
+        }
+        settingsReady.then(() => {
+            if (!SETTINGS.recolorSwatches) {
+                sendResponse({ success: false, error: 'disabled', disabled: true });
+                return;
+            }
+            handleGetPlayerColors(matchId)
+                .then(payload => sendResponse(payload))
+                .catch((error: unknown) => sendResponse({ success: false, error: (error as {
+                    message?: string;
+                })?.message || String(error) }));
+        });
+        return true;
+    }
+    if (msg.type === 'getUnitData') {
+        settingsReady.then(() => {
+            if (!SETTINGS.injectCharts) {
+                sendResponse({ success: false, error: 'disabled', disabled: true });
+                return;
+            }
+            const slugs = Array.isArray(msg.civSlugs) ? msg.civSlugs : [];
+            handleGetUnitData(slugs)
+                .then(payload => sendResponse(payload))
+                .catch((error: unknown) => sendResponse({ success: false, error: (error as {
+                    message?: string;
+                })?.message || String(error) }));
+        });
+        return true;
+    }
+});
+const UNIT_DATA_CACHE_PREFIX = 'unit_data_v2_';
+const UNIT_DATA_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const UNIT_DATA_NEGATIVE_TTL_MS = 60 * 60 * 1000;
+const inFlightUnitDataRequests = new Map<string, Promise<UnitDataItem[] | null>>();
+async function handleGetUnitData(civSlugs: readonly unknown[]): Promise<GetUnitDataResponse> {
+    const valid = [...new Set(civSlugs.filter((s: unknown): s is string => /^[a-z0-9_-]+$/i.test(String(s))).map(String))];
+    if (!valid.length)
+        return { success: true, units: {} };
+    const results = await Promise.all(valid.map((slug): Promise<[
+        string,
+        UnitDataItem[] | null
+    ]> => fetchOneCivUnits(slug).then(units => [slug, units], () => [slug, null])));
+    const units: Record<string, UnitDataItem[]> = {};
+    for (const [slug, data] of results)
+        units[slug] = data || [];
+    return { success: true, units };
+}
+async function fetchOneCivUnits(slug: string): Promise<UnitDataItem[] | null> {
+    const cacheKey = UNIT_DATA_CACHE_PREFIX + slug;
+    const cached = await chrome.storage.local.get(cacheKey) as Record<string, UnitDataCacheEntry | undefined>;
+    const entry = cached[cacheKey];
+    if (entry?.units && entry.savedAt != null && Date.now() - entry.savedAt < UNIT_DATA_TTL_MS)
+        return entry.units;
+    if (entry?.failedAt && Date.now() - entry.failedAt < UNIT_DATA_NEGATIVE_TTL_MS)
+        return null;
+    if (inFlightUnitDataRequests.has(slug))
+        return inFlightUnitDataRequests.get(slug)!;
+    const promise: Promise<UnitDataItem[] | null> = (async () => {
+        try {
+            const url = `https://raw.githubusercontent.com/aoe4world/data/main/units/${slug}.json`;
+            const resp = await fetch(url, { headers: { 'Accept': 'application/json' } });
+            if (!resp.ok)
+                throw new Error(`http_${resp.status}`);
+            const data = await resp.json() as {
+                data?: RawUnitDataItem[];
+            };
+            const raw = Array.isArray(data?.data) ? data.data : [];
+            const slim = raw
+                .filter((u: RawUnitDataItem | undefined): u is RawUnitDataItem & {
+                id: string;
+                name: string;
+            } => !!u && !!u.id && !!u.name)
+                .map((u): UnitDataItem => ({
+                id: u.id,
+                baseId: u.baseId || '',
+                name: u.name,
+                age: u.age || 0,
+                pbgid: u.pbgid || 0,
+                attribName: u.attribName || '',
+                icon: u.icon || '',
+                classes: Array.isArray(u.classes) ? u.classes : [],
+                costs: u.costs || null,
+            }));
+            await chrome.storage.local.set({ [cacheKey]: { units: slim, savedAt: Date.now() } });
+            return slim;
+        }
+        catch (err) {
+            await chrome.storage.local.set({ [cacheKey]: { failedAt: Date.now(), error: (err as {
+                        message?: string;
+                    })?.message || String(err) } });
+            return null;
+        }
+        finally {
+            inFlightUnitDataRequests.delete(slug);
+        }
+    })();
+    inFlightUnitDataRequests.set(slug, promise);
+    return promise;
+}
+async function handleGetPlayerColors(matchId: string): Promise<GetPlayerColorsResponse> {
+    const cacheKey = COLORS_CACHE_KEY_PREFIX + matchId;
+    const cached = await chrome.storage.local.get(cacheKey) as Record<string, ColorCacheEntry | undefined>;
+    const entry = cached[cacheKey];
+    if (entry?.players) {
+        return { success: true, players: entry.players, cached: true };
+    }
+    if (entry?.failedAt) {
+        const ttl = entry.softFailure ? COLORS_SOFT_FAILURE_TTL_MS : COLORS_NEGATIVE_TTL_MS;
+        if (Date.now() - entry.failedAt < ttl) {
+            return { success: false, error: entry.error || 'cached_failure', cached: true };
+        }
+    }
+    if (inFlightColorRequests.has(matchId)) {
+        return inFlightColorRequests.get(matchId)!;
+    }
+    const inflight: Promise<GetPlayerColorsResponse> = (async () => {
+        try {
+            if (Date.now() < backoffUntil) {
+                return { success: false, error: 'rate_limited', rateLimited: true };
+            }
+            const players = await fetchAndParsePlayerColors(matchId);
+            await storeColorEntry(cacheKey, { players, savedAt: Date.now() });
+            return { success: true, players, cached: false };
+        }
+        catch (err) {
+            const message = (err as {
+                message?: string;
+            })?.message || String(err);
+            if (message === 'rate_limited') {
+                return { success: false, error: 'rate_limited', rateLimited: true };
+            }
+            if (isPermanentFailure(message)) {
+                await storeColorEntry(cacheKey, { failedAt: Date.now(), error: message });
+            }
+            else if (isSoftFailure(message)) {
+                await storeColorEntry(cacheKey, { failedAt: Date.now(), error: message, softFailure: true });
+            }
+            return { success: false, error: message };
+        }
+    })();
+    inFlightColorRequests.set(matchId, inflight);
+    try {
+        return await inflight;
+    }
+    finally {
+        inFlightColorRequests.delete(matchId);
+    }
+}
+function isPermanentFailure(message: string | null | undefined): boolean {
+    if (!message)
+        return false;
+    if (message === 'no_replay_file')
+        return true;
+    if (message === 'replay_api_no_data')
+        return true;
+    if (message.startsWith('parse_'))
+        return true;
+    if (/^replay_api_4\d\d$/.test(message))
+        return true;
+    return false;
+}
+function isSoftFailure(message: string | null | undefined): boolean {
+    if (!message)
+        return false;
+    if (/Failed to fetch/i.test(message))
+        return true;
+    if (/NetworkError/i.test(message))
+        return true;
+    if (/ERR_BLOCKED/i.test(message))
+        return true;
+    if (/^blob_fetch_/.test(message))
+        return true;
+    if (/HTTP \d+ downloading replay/i.test(message))
+        return true;
+    return false;
+}
+async function fetchAndParsePlayerColors(matchId: string): Promise<PlayerColorInfo[]> {
+    const apiUrl = `${REPLAY_API}?matchIDs=[${matchId}]&title=age4`;
+    const apiResponse = await fetch(apiUrl, { headers: { 'User-Agent': UA } });
+    let data: ReplayApiResponse;
+    try {
+        data = await parseReplayApiJson(apiResponse, 'replay metadata');
+    }
+    catch (e) {
+        const message = (e as {
+            message?: string;
+        })?.message || String(e);
+        if (message === 'Rate limited')
+            throw new Error('rate_limited');
+        const m = message.match(/HTTP (\d+)/);
+        if (m)
+            throw new Error(`replay_api_${m[1]}`);
+        throw new Error('replay_api_no_data');
+    }
+    if (data.result?.code !== 0 || !Array.isArray(data.replayFiles)) {
+        throw new Error('replay_api_no_data');
+    }
+    const replayFile = data.replayFiles.find((f: ReplayFile) => f.datatype === 0 && f.size > 0 && f.url);
+    if (!replayFile)
+        throw new Error('no_replay_file');
+    if (replayFile.url)
+        updatePatchFromUrl(replayFile.url);
+    const blobResponse = await fetch(replayFile.url as string);
+    if (!blobResponse.ok)
+        throw new Error(`blob_fetch_${blobResponse.status}`);
+    const arrayBuffer = await blobResponse.arrayBuffer();
+    const result = await extractPlayerColors(arrayBuffer);
+    shadowValidateStructural(arrayBuffer, result, matchId).catch((err: unknown) => {
+        console.warn('[parse-shadow] outer threw', { matchId, error: (err as {
+                message?: string;
+            })?.message || String(err) });
+    });
+    return result.players.map(p => ({
+        slot: p.slot,
+        name: p.name,
+        civilization: p.civilization,
+        playerId: p.playerId,
+        color: p.color,
+        colorName: p.colorName,
+    }));
+}
+async function shadowValidateStructural(arrayBuffer: ArrayBuffer, heuristicResult: ExtractPlayerColorsResult, matchId: string): Promise<void> {
+    try {
+        const structural = await extractPlayerColorsStructural(arrayBuffer);
+        const agree = playersAgree(heuristicResult.players, structural.players);
+        if (agree) {
+            const stringDiffs = playersStringDiff(heuristicResult.players, structural.players);
+            dbg('[parse-shadow] structural agrees', {
+                matchId,
+                chunkVersion: heuristicResult.chunkVersion,
+                playerCount: structural.players.length,
+                warnings: structural.warnings,
+                stringDiffs,
+                diagnostic: structural.diagnostic,
+            });
+        }
+        else {
+            console.warn('[parse-shadow] structural ≠ heuristic', {
+                matchId,
+                chunkVersion: heuristicResult.chunkVersion,
+                heuristic: heuristicResult.players.map((p: PlayerColorInfo) => ({ slot: p.slot, name: p.name, color: p.color, playerId: p.playerId })),
+                structural: structural.players.map((p: PlayerColorInfo) => ({ slot: p.slot, name: p.name, color: p.color, playerId: p.playerId })),
+                structuralWarnings: structural.warnings,
+                structuralDiagnostic: structural.diagnostic,
+            });
+        }
+    }
+    catch (err) {
+        console.warn('[parse-shadow] structural threw', {
+            matchId,
+            chunkVersion: heuristicResult.chunkVersion,
+            error: (err as {
+                message?: string;
+            })?.message || String(err),
+        });
+    }
+}
+function playersAgree(heuristic: PlayerColorInfo[], structural: PlayerColorInfo[]): boolean {
+    if (!Array.isArray(heuristic) || !Array.isArray(structural))
+        return false;
+    if (heuristic.length !== structural.length)
+        return false;
+    const norm = (s: string | null | undefined): string | null => (s == null ? null : String(s));
+    const h = new Map<string, PlayerColorInfo>();
+    let hNullCount = 0;
+    for (const p of heuristic) {
+        const key = norm(p.playerId);
+        if (key == null) {
+            hNullCount++;
+            continue;
+        }
+        if (h.has(key))
+            return false;
+        h.set(key, p);
+    }
+    const s = new Map<string, PlayerColorInfo>();
+    let sNullCount = 0;
+    for (const p of structural) {
+        const key = norm(p.playerId);
+        if (key == null) {
+            sNullCount++;
+            continue;
+        }
+        if (s.has(key))
+            return false;
+        s.set(key, p);
+    }
+    if (hNullCount !== sNullCount)
+        return false;
+    if (h.size !== s.size)
+        return false;
+    for (const [pid, sp] of s) {
+        const hp = h.get(pid);
+        if (!hp)
+            return false;
+        if (sp.color !== hp.color)
+            return false;
+    }
+    return true;
+}
+function playersStringDiff(heuristic: PlayerColorInfo[], structural: PlayerColorInfo[]): PlayerStringDiff[] {
+    const diffs: PlayerStringDiff[] = [];
+    const norm = (s: string | null | undefined): string | null => (s == null ? null : String(s));
+    const sByPid = new Map<string, PlayerColorInfo>(structural.filter((p: PlayerColorInfo) => !!p.playerId).map((p: PlayerColorInfo) => [norm(p.playerId) as string, p]));
+    for (const hp of heuristic) {
+        const playerId = norm(hp.playerId);
+        if (playerId == null)
+            continue;
+        const sp = sByPid.get(playerId);
+        if (!sp)
+            continue;
+        if ((hp.name ?? null) !== (sp.name ?? null))
+            diffs.push({ playerId: hp.playerId, field: 'name', heuristic: hp.name, structural: sp.name });
+        if ((hp.civilization ?? null) !== (sp.civilization ?? null))
+            diffs.push({ playerId: hp.playerId, field: 'civilization', heuristic: hp.civilization, structural: sp.civilization });
+    }
+    return diffs;
+}
+async function storeColorEntry(cacheKey: string, value: ColorCacheEntry): Promise<void> {
+    await chrome.storage.local.set({ [cacheKey]: value });
+    await pruneColorCache();
+}
+async function pruneColorCache(): Promise<void> {
+    const all = await chrome.storage.local.get(null) as StorageItems;
+    const entries: Array<{
+        key: string;
+        ts: number;
+    }> = [];
+    for (const [key, value] of Object.entries(all)) {
+        if (!key.startsWith(COLORS_CACHE_KEY_PREFIX))
+            continue;
+        const cacheValue = value as ColorCacheEntry;
+        const ts = cacheValue.savedAt ?? cacheValue.failedAt ?? 0;
+        entries.push({ key, ts });
+    }
+    if (entries.length <= COLORS_CACHE_LIMIT)
+        return;
+    entries.sort((a, b) => a.ts - b.ts);
+    const toRemove = entries.slice(0, entries.length - COLORS_CACHE_LIMIT).map(e => e.key);
+    if (toRemove.length)
+        await chrome.storage.local.remove(toRemove);
+}
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++)
+        binary += String.fromCharCode(bytes[i]);
+    return btoa(binary);
+}

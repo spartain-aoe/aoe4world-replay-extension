@@ -78,7 +78,6 @@ export function replaceUnitIconPlaceholders(key: string, url: string): void {
 
 let _lastDomSeedTime = 0;
 export function seedUnitIconCacheFromDom(): void {
-  // Throttle to 1Hz — called from per-frame hot paths.
   const now = performance.now();
   if (now - _lastDomSeedTime < 1000) return;
   _lastDomSeedTime = now;
@@ -122,7 +121,6 @@ export function resolveLoadedUnitDisplayNameFromDom(candidates: string[]): strin
   return '';
 }
 
-// Tries each candidate URL; swaps placeholder spans for <img> on first success.
 function loadNextUnitIcon(key: string): void {
   const entry = unitIconCache.get(key);
   if (!entry || entry.status !== 'pending' || !entry.candidates) return;
@@ -156,7 +154,6 @@ export function resolveUnitIconUrl(unit: UnitIconTarget | null | undefined, key 
     unitIconCache.set(key, { status: 'loaded', url: domUrl });
     return domUrl;
   }
-  // Async CDN probe; placeholder spans are swapped on success.
   unitIconCache.set(key, { status: 'pending', candidates: [...candidates], index: 0 });
   loadNextUnitIcon(key);
   return '';
@@ -169,7 +166,6 @@ export function armyIconElement(unit: UnitIconTarget | null | undefined): HTMLEl
   return unitIconImage(url);
 }
 
-// Re-resolve display name from DOM each render; build-order images load async.
 export function resolveCurrentUnitName(item: UnitIconTarget | null | undefined): string {
   if (!item) return '';
   const fromDom = resolveLoadedUnitDisplayNameFromDom(item.iconCandidates || []);
