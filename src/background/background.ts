@@ -668,13 +668,19 @@ async function fetchAndParsePlayerColors(matchId: string): Promise<PlayerColorIn
     if (!blobResponse.ok)
         throw new Error(`blob_fetch_${blobResponse.status}`);
     const arrayBuffer = await blobResponse.arrayBuffer();
-    const result = await extractPlayerColors(arrayBuffer);
-    shadowValidateStructural(arrayBuffer, result, matchId).catch((err: unknown) => {
-        console.warn('[parse-shadow] outer threw', { matchId, error: (err as {
-                message?: string;
-            })?.message || String(err) });
-    });
-    return result.players.map(p => ({
+    let players: PlayerColorInfo[];
+    try {
+        const result = await extractPlayerColors(arrayBuffer);
+        players = result.players;
+        shadowValidateStructural(arrayBuffer, result, matchId).catch((err: unknown) => {
+            console.warn('[parse-shadow] outer threw', { matchId, error: (err as { message?: string })?.message || String(err) });
+        });
+    } catch (heuristicErr) {
+        dbg('[parse] heuristic failed, falling back to structural', { matchId, error: (heuristicErr as { message?: string })?.message });
+        const structural = await extractPlayerColorsStructural(arrayBuffer);
+        players = structural.players;
+    }
+    return players.map(p => ({
         slot: p.slot,
         name: p.name,
         civilization: p.civilization,
