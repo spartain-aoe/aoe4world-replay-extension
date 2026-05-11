@@ -37,7 +37,7 @@ export function findAnchor(row: Element): HTMLAnchorElement | null {
 }
 
 export function getGameIdFromUrl(url: string | null | undefined): string | null {
-  const m = String(url || '').match(/\/players\/\d+(?:-[^/]+)?\/games\/(\d+)/);
+  const m = String(url || '').match(/\/players\/\d+(?:-[^/]*)?\/games\/(\d+)/);
   return m ? m[1] : null;
 }
 

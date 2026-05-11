@@ -100,7 +100,7 @@ export function tryAddSummaryCharts(): void {
 }
 
 function buildSummaryUrl(): string {
-  const path = window.location.pathname.match(/^(\/players\/\d+(?:-[^/]+)?\/games\/\d+)/)?.[1];
+  const path = window.location.pathname.match(/^(\/players\/\d+(?:-[^/]*)?\/games\/\d+)/)?.[1];
   if (!path) return '';
   const params = new URLSearchParams(window.location.search);
   params.set('camelize', 'true');
