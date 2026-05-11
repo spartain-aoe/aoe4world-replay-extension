@@ -17,11 +17,24 @@ export function validColor(c: unknown): c is number {
   return typeof c === 'number' && Number.isInteger(c) && c >= 0 && c < 10;
 }
 
+function normalizeCivKey(value: string): string {
+  return String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+}
+
+function compactCivKey(value: string): string {
+  return normalizeCivKey(value).replace(/_/g, '');
+}
+
 export function civsOverlap(a: string, b: string): boolean {
-  if (a.startsWith(b) || b.startsWith(a)) return true;
-  const baseA = a.replace(/_ha_\w+$/, '');
-  const baseB = b.replace(/_ha_\w+$/, '');
+  const normA = normalizeCivKey(a);
+  const normB = normalizeCivKey(b);
+  if (normA.startsWith(normB) || normB.startsWith(normA)) return true;
+  const baseA = normA.replace(/_ha_\w+$/, '');
+  const baseB = normB.replace(/_ha_\w+$/, '');
   if (baseA.startsWith(baseB) || baseB.startsWith(baseA)) return true;
+  const compactA = compactCivKey(baseA);
+  const compactB = compactCivKey(baseB);
+  if (compactA === compactB) return true;
   return false;
 }
 

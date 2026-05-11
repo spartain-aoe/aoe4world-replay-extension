@@ -1,5 +1,5 @@
 import { onSettingsChange, recolorEnabled, removeEarlyHideStyle } from './settings.ts';
-import { AOE4_PLAYER_COLOR_HEX, lookupReplayColorIndex } from './colors.ts';
+import { AOE4_PLAYER_COLOR_HEX, lookupReplayColorIndex, validColor } from './colors.ts';
 import type { GameSummary, ReplayPlayer, Settings } from './types.ts';
 
 interface ChartInjectorMessage {
@@ -79,7 +79,7 @@ export function applyReplayColorsToNativeChart(summary: GameSummary | null | und
   });
   for (const rp of replayPlayers) {
     if (!rp.name || colorByName[rp.name] != null) continue;
-    if (Number.isInteger(rp.color) && rp.color >= 0 && rp.color < 8) {
+    if (validColor(rp.color)) {
       colorByName[rp.name] = AOE4_PLAYER_COLOR_HEX[rp.color];
     }
   }

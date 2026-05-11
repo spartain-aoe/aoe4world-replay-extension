@@ -78,9 +78,11 @@ const SECOND_CHUNKY_OFFSET = 0x90;
 const CHUNKY_MAGIC = 'Relic Chunky\r\n\x1a\0';
 const COLOR_OFFSET_AFTER_STEAMID = 14;
 const KNOWN_CIVS = new Set([
-    'english', 'french', 'hre', 'rus', 'mongol', 'chinese', 'abbasid', 'delhi', 'malian', 'ottoman',
-    'byzantine', 'japanese', 'jin_dynasty',
-    'templar',
+    'english', 'french', 'hre', 'holy_roman_empire', 'rus', 'mongol', 'mongols', 'chinese',
+    'abbasid', 'abbasid_dynasty', 'delhi', 'delhi_sultanate', 'malian', 'malians', 'ottoman', 'ottomans',
+    'byzantine', 'byzantines', 'japanese', 'jeanne_darc', 'order_of_the_dragon',
+    'ayyubids', 'golden_horde', 'house_of_lancaster', 'jin_dynasty', 'knights_templar',
+    'macedonian_dynasty', 'sengoku_daimyo', 'templar', 'tughlaq_dynasty', 'zhu_xis_legacy',
 ]);
 function isPlausibleCiv(value: string): boolean {
     if (KNOWN_CIVS.has(value))

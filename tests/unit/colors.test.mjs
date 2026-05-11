@@ -22,6 +22,8 @@ test('civsOverlap matches prefix and _ha_ variants', () => {
   assert.equal(civsOverlap('english', 'french'), false);
   assert.equal(civsOverlap('japanese_ha_sen', 'japanese_ha_sho'), true);
   assert.equal(civsOverlap('chinese', 'chinese'), true);
+  assert.equal(civsOverlap('jin dynasty', 'jin_dynasty'), true);
+  assert.equal(civsOverlap('jindynasty', 'jin_dynasty'), true);
 });
 
 test('parseCssColor handles rgb, hex3, hex6, garbage', () => {
@@ -57,6 +59,15 @@ test('lookupReplayColorIndex prefers name+civ, then unique name, then slot', () 
   assert.equal(lookupReplayColorIndex(summary, { name: 'Spartain', civilizationAttrib: 'knights_templar' }, 0), 0);
   assert.equal(lookupReplayColorIndex({}, { name: 'X' }, 0), null);
   assert.equal(lookupReplayColorIndex(null, { name: 'X' }, 0), null);
+  const dlcSummary = {
+    _aoe4ReplayPlayers: [
+      { name: 'Mirror', civilization: 'jin_dynasty', color: 8, slot: 0 },
+      { name: 'Mirror', civilization: 'english', color: 9, slot: 1 },
+    ],
+  };
+  assert.equal(lookupReplayColorIndex(dlcSummary, { name: 'Mirror', civilizationAttrib: 'jindynasty' }, 7), 8);
+  assert.equal(lookupReplayColorIndex(dlcSummary, { name: 'Mirror', civilization: 'English' }, 7), 9);
+  assert.equal(playerColor(dlcSummary, { name: 'Mirror', civilizationAttrib: 'jin dynasty' }, 7), AOE4_PLAYER_COLOR_HEX[8]);
 });
 
 test('playerColor falls back to native then PLAYER_COLORS', () => {
