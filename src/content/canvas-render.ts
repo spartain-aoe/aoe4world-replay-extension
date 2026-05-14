@@ -33,6 +33,7 @@ type DrawTimelineCanvasChartOptions = {
 };
 
 const CHART_ANIMATION_MS = 750;
+const RESOURCE_GATHERED_VALUE_PREFIX = 'aoe4plus:resources-gathered-';
 
 function easedProgress(progress: number): number {
   const clamped = Math.max(0, Math.min(1, progress));
@@ -46,6 +47,10 @@ function prefersReducedMotion(): boolean {
   } catch {
     return false;
   }
+}
+
+function usesRiseUpAnimation(chart: Chart): boolean {
+  return String(chart.value || '').startsWith(RESOURCE_GATHERED_VALUE_PREFIX);
 }
 
 // How many animation frames to retry icon redraws when the canvas is temporarily
@@ -189,7 +194,19 @@ export function drawTimelineCanvasChart(
   const plotW = Math.max(1, cssWidth - margin.left - margin.right);
   const plotH = Math.max(1, cssHeight - margin.top - margin.bottom);
   const animationProgress = Math.max(0, Math.min(1, options.animationProgress ?? 1));
-  const animatedPlotW = plotW * animationProgress;
+  const animationClip = usesRiseUpAnimation(chart)
+    ? {
+        x: margin.left,
+        y: margin.top + plotH * (1 - animationProgress),
+        width: plotW,
+        height: plotH * animationProgress,
+      }
+    : {
+        x: margin.left,
+        y: margin.top,
+        width: plotW * animationProgress,
+        height: plotH,
+      };
 
   const renderedY = ensureChartRenderCache(chart, margin, plotH) as Map<string, Float32Array | StackedYCache>;
 
@@ -233,7 +250,7 @@ export function drawTimelineCanvasChart(
 
   ctx.save();
   ctx.beginPath();
-  ctx.rect(margin.left, margin.top, animatedPlotW, plotH);
+  ctx.rect(animationClip.x, animationClip.y, animationClip.width, animationClip.height);
   ctx.clip();
 
   if (chart.type === 'army') {

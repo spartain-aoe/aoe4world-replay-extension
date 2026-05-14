@@ -529,7 +529,7 @@ describe('drawTimelineCanvasChart', () => {
   });
 
   describe('chart animation', () => {
-    it('clips plotted data to animation progress', () => {
+    it('clips non-resource plotted data left-to-right during animation', () => {
       const canvas = makeCanvas();
       const s1 = lineSeriesItem('p1', Array.from({ length: SAMPLE_COUNT }, (_, i) => i * 3));
       const chart = makeChart('workers', [s1]);
@@ -540,6 +540,21 @@ describe('drawTimelineCanvasChart', () => {
       assert.ok(clipRect, 'expected plot clip rect');
       assert.equal(clipRect.args[0], 28);
       assert.ok(clipRect.args[2] > 450 && clipRect.args[2] < 500, `expected about half plot width, got ${clipRect.args[2]}`);
+    });
+
+    it('clips resources gathered charts bottom-to-top during animation', () => {
+      const canvas = makeCanvas();
+      const s1 = lineSeriesItem('p1', Array.from({ length: SAMPLE_COUNT }, (_, i) => i * 3));
+      const chart = makeChart('line', [s1], { value: 'aoe4plus:resources-gathered-food' });
+
+      drawTimelineCanvasChart(canvas, chart, null, { animationProgress: 0.5 });
+
+      const clipRect = canvas._ctx._calls.find(c => c.m === 'rect');
+      assert.ok(clipRect, 'expected plot clip rect');
+      assert.equal(clipRect.args[0], 28);
+      assert.ok(clipRect.args[1] > 200, `expected bottom-up clip to start below plot top, got y=${clipRect.args[1]}`);
+      assert.ok(clipRect.args[2] > 900, `expected full plot width for rise-up animation, got ${clipRect.args[2]}`);
+      assert.ok(clipRect.args[3] > 180 && clipRect.args[3] < 230, `expected about half plot height, got ${clipRect.args[3]}`);
     });
 
     it('animateTimelineCanvasChart starts with a zero-width plot and schedules a frame', () => {

@@ -13,9 +13,9 @@
  *   one visible frame. The chart therefore appears fully-rendered immediately.
  *
  * Detection strategy:
- *   The animation clips drawing to a rect that grows left-to-right from
- *   plotW=0 (progress=0) to plotW=full (progress=1). The centre strip of the
- *   canvas is NOT reached until progress ≈ 0.50 (≈375 ms into animation).
+ *   The animation clips drawing to a rect that grows over time. Resource
+ *   charts reveal bottom-to-top; other injected charts reveal left-to-right.
+ *   Either way, only a small portion of the plotted series is visible early.
  *
  *   With the BUG:
  *     The guard cancels the animation and draws the full chart immediately.
@@ -23,8 +23,8 @@
  *
  *   With the FIX:
  *     The guard skips the redraw while animation is in progress.
- *     The centre strip has low alpha at t=50ms (only grid lines; series lines
- *     haven't been clipped/drawn that far yet).
+ *     The centre strip has low alpha at t=50ms (only grid lines plus a small
+ *     clipped portion of series lines).
  *     At t=950ms the animation is complete and the centre strip has full alpha.
  *
  * NOTE: Chrome extension content scripts run in an isolated world.  Expando
@@ -75,10 +75,10 @@ async function navigate(url, waitMs = 14000) {
  * Reads the alpha sum of the CENTRE VERTICAL STRIP of the injected canvas.
  *
  * Strip: x = [50%..60%] of canvas.width, full height.
- * The animation clips drawing to a left-to-right growing rect.
- * At progress < 0.50 the centre strip contains only axis grid lines
- * (thin, low-alpha); at progress = 1 it also contains the series lines
- * (thick, high-alpha) — so alphaSum is significantly higher.
+  * The animation clips plotted series to a partially-grown rect. During the
+  * early bottom-to-top resource reveal, this full-height strip contains only a
+  * small portion of the final series pixels; at progress = 1 it contains the
+  * full series — so alphaSum is significantly higher.
  */
 function getCentreStripAlpha() {
   return page.evaluate(() => {
@@ -211,9 +211,10 @@ function assert(condition, msg) {
    * Trigger the hover guard immediately after chart selection.  If the guard
    * cancels the animation (bug), the full chart is drawn at once and the
    * centre strip has HIGH alpha at t=50ms.  If the guard correctly skips the
-   * redraw while animation is running (fix), the clip rect has not yet reached
-   * the centre strip at t=50ms, so the strip contains only thin grid-lines
-   * (LOW alpha).  After 900ms the animation is complete and the strip is full.
+    * redraw while animation is running (fix), the clip rect is still small at
+    * t=50ms, so the strip contains only thin grid-lines and a small clipped
+    * portion of the series (LOW alpha).  After 900ms the animation is complete
+    * and the strip is full.
    *
    * Assertion: earlyAlpha  <  lateAlpha × 0.4
    *   Bug:  153 000 < 153 000 × 0.4 = 61 000 ?  NO  → FAILS  ✓
