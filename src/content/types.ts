@@ -4,6 +4,7 @@ export interface ResourceDict {
   gold: number;
   stone: number;
   oliveoil?: number;
+  silver?: number;
 }
 
 export type ResourceKey = keyof Required<ResourceDict>;
@@ -18,11 +19,13 @@ export interface PlayerResources {
   gold?: NumberList;
   stone?: NumberList;
   oliveoil?: NumberList;
+  silver?: NumberList;
   foodGathered?: NumberList;
   woodGathered?: NumberList;
   goldGathered?: NumberList;
   stoneGathered?: NumberList;
   oliveoilGathered?: NumberList;
+  silverGathered?: NumberList;
   [key: string]: unknown;
 }
 
@@ -42,6 +45,7 @@ export interface PlayerAgeUpTimes {
 }
 
 export interface BuildOrderItem {
+  id?: string | number;
   type: 'Unit' | 'Building' | 'Upgrade' | string;
   icon: string;
   pbgid?: number;
@@ -206,6 +210,7 @@ export interface TimelineElements {
   __aoe4OverlayResizeObserver?: ResizeObserver | null;
   __aoe4PlayerToggleHandlers?: PlayerToggleHandler[];
   __aoe4LegendPending?: boolean;
+  __aoe4LegendChart?: Chart;
   __aoe4BuildOrderRetryScheduled?: boolean;
   __aoe4BuildOrderObserver?: MutationObserver | null;
 }
@@ -217,6 +222,7 @@ export interface TimelineRootExtensions {
   };
   __aoe4GameId?: string;
   __aoe4ColorsRequestedFor?: string;
+  __aoe4RouteToken?: number;
 }
 
 export interface ChartBoxExtensions {
@@ -230,6 +236,9 @@ export interface CanvasExtensions {
   __aoe4SummaryHandlers?: CanvasTooltipHandlers;
   __aoe4SummarySuppress?: (event: MouseEvent) => void;
   __aoe4HoverActive?: boolean;
+  __aoe4AnimationFrame?: number | null;
+  __aoe4AnimationToken?: symbol | null;
+  __aoe4IconRedrawFrame?: number | null;
 }
 
 export interface RangeState {

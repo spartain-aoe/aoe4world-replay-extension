@@ -27,7 +27,108 @@ import type {
   StackedYCache,
 } from './types.ts';
 
-export function drawTimelineCanvasChart(canvas: HTMLCanvasElement & CanvasExtensions, chart: Chart, hoverIndex: number | null = null): void {
+type DrawTimelineCanvasChartOptions = {
+  animationProgress?: number;
+  preserveAnimation?: boolean;
+};
+
+const CHART_ANIMATION_MS = 750;
+
+function easedProgress(progress: number): number {
+  const clamped = Math.max(0, Math.min(1, progress));
+  return 1 - Math.pow(1 - clamped, 3);
+}
+
+function prefersReducedMotion(): boolean {
+  try {
+    return typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  } catch {
+    return false;
+  }
+}
+
+// How many animation frames to retry icon redraws when the canvas is temporarily
+// disconnected (e.g. during a brief React DOM reconciliation).  ~400 ms at 60 fps.
+const MAX_ICON_REDRAW_RETRIES = 25;
+
+function scheduleAreaIconRedraw(canvas: HTMLCanvasElement & CanvasExtensions, chart: Chart): void {
+  if (canvas.__aoe4IconRedrawFrame != null || typeof requestAnimationFrame !== 'function') return;
+  let retries = 0;
+  const redraw = (): void => {
+    if (canvas.__aoe4AnimationToken) {
+      canvas.__aoe4IconRedrawFrame = requestAnimationFrame(redraw);
+      return;
+    }
+    if (!canvas.isConnected) {
+      // Canvas may be briefly disconnected during a DOM reconciliation. Retry
+      // for a short window; give up if the canvas is permanently detached.
+      if (retries++ < MAX_ICON_REDRAW_RETRIES) {
+        canvas.__aoe4IconRedrawFrame = requestAnimationFrame(redraw);
+      } else {
+        canvas.__aoe4IconRedrawFrame = null;
+      }
+      return;
+    }
+    canvas.__aoe4IconRedrawFrame = null;
+    drawTimelineCanvasChart(canvas, chart);
+  };
+  canvas.__aoe4IconRedrawFrame = requestAnimationFrame(redraw);
+}
+
+export function cancelTimelineCanvasAnimation(canvas: (HTMLCanvasElement & CanvasExtensions) | null | undefined): void {
+  if (!canvas) return;
+  const frame = canvas.__aoe4AnimationFrame;
+  if (frame != null && typeof cancelAnimationFrame === 'function') {
+    try { cancelAnimationFrame(frame); } catch { }
+  }
+  canvas.__aoe4AnimationFrame = null;
+  canvas.__aoe4AnimationToken = null;
+}
+
+export function animateTimelineCanvasChart(
+  canvas: HTMLCanvasElement & CanvasExtensions,
+  chart: Chart,
+  durationMs = CHART_ANIMATION_MS,
+): void {
+  cancelTimelineCanvasAnimation(canvas);
+  if (durationMs <= 0 || prefersReducedMotion() || typeof requestAnimationFrame !== 'function') {
+    drawTimelineCanvasChart(canvas, chart);
+    return;
+  }
+
+  const token = Symbol('aoe4-chart-animation');
+  const start = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+    ? performance.now()
+    : Date.now();
+  canvas.__aoe4AnimationToken = token;
+
+  const renderFrame = (now: number): void => {
+    if (canvas.__aoe4AnimationToken !== token) return;
+    const progress = Math.max(0, Math.min(1, (now - start) / durationMs));
+    drawTimelineCanvasChart(canvas, chart, null, {
+      animationProgress: easedProgress(progress),
+      preserveAnimation: true,
+    });
+    if (progress < 1) {
+      canvas.__aoe4AnimationFrame = requestAnimationFrame(renderFrame);
+    } else {
+      canvas.__aoe4AnimationFrame = null;
+      canvas.__aoe4AnimationToken = null;
+    }
+  };
+
+  drawTimelineCanvasChart(canvas, chart, null, { animationProgress: 0, preserveAnimation: true });
+  canvas.__aoe4AnimationFrame = requestAnimationFrame(renderFrame);
+}
+
+export function drawTimelineCanvasChart(
+  canvas: HTMLCanvasElement & CanvasExtensions,
+  chart: Chart,
+  hoverIndex: number | null = null,
+  options: DrawTimelineCanvasChartOptions = {},
+): void {
+  if (!options.preserveAnimation) cancelTimelineCanvasAnimation(canvas);
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
   const rect = canvas.getBoundingClientRect();
@@ -62,6 +163,8 @@ export function drawTimelineCanvasChart(canvas: HTMLCanvasElement & CanvasExtens
   const margin = { ...baseMargin, top: ageUpMarginTopForRows(ageUpPlacement.rowCount) };
   const plotW = Math.max(1, cssWidth - margin.left - margin.right);
   const plotH = Math.max(1, cssHeight - margin.top - margin.bottom);
+  const animationProgress = Math.max(0, Math.min(1, options.animationProgress ?? 1));
+  const animatedPlotW = plotW * animationProgress;
 
   const renderedY = ensureChartRenderCache(chart, margin, plotH) as Map<string, Float32Array | StackedYCache>;
 
@@ -105,7 +208,7 @@ export function drawTimelineCanvasChart(canvas: HTMLCanvasElement & CanvasExtens
 
   ctx.save();
   ctx.beginPath();
-  ctx.rect(margin.left, margin.top, plotW, plotH);
+  ctx.rect(margin.left, margin.top, animatedPlotW, plotH);
   ctx.clip();
 
   if (chart.type === 'army') {
@@ -255,9 +358,9 @@ export function drawTimelineCanvasChart(canvas: HTMLCanvasElement & CanvasExtens
       if (!ys?.stackBase || !ys?.stackTop) continue;
 
       if (!item._areaIcon) {
-        const iconUrl = resolveUnitIconUrl(item, unitIconCacheKey(item));
-        if (!iconUrl) { item._areaIcon = { url: '', entry: null }; continue; }
-        item._areaIcon = { url: iconUrl, entry: loadAreaIcon(iconUrl) };
+        const iconUrl = resolveUnitIconUrl(item, unitIconCacheKey(item), () => scheduleAreaIconRedraw(canvas, chart));
+        if (!iconUrl) continue;
+        item._areaIcon = { url: iconUrl, entry: loadAreaIcon(iconUrl, () => scheduleAreaIconRedraw(canvas, chart)) };
       }
       const areaIcon = item._areaIcon;
       if (!areaIcon?.url || !areaIcon.entry?.loaded) continue;

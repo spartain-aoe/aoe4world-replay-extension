@@ -20,11 +20,14 @@ function isUnitNode(key: string, _meta: LegendNodeMeta): _meta is LegendUnitNode
 }
 
 export function renderArmyUnitLegend(timeline: TimelineElements, chart: Chart): void {
+  timeline.__aoe4LegendChart = chart;
   if (timeline.__aoe4LegendPending) return;
   timeline.__aoe4LegendPending = true;
   requestAnimationFrame(() => {
     timeline.__aoe4LegendPending = false;
-    renderArmyUnitLegendNow(timeline, chart);
+    const latestChart = timeline.__aoe4LegendChart ?? chart;
+    renderArmyUnitLegendNow(timeline, latestChart);
+    timeline.__aoe4LegendChart = undefined;
   });
 }
 

@@ -6,11 +6,14 @@ interface UnitIconCacheEntry {
   candidates?: string[];
   index?: number;
   candidateCount?: number;
+  callbacks?: Set<(url: string) => void>;
 }
 
-interface AreaIconImageEntry {
+export interface AreaIconImageEntry {
   img: HTMLImageElement;
   loaded: boolean;
+  failed?: boolean;
+  callbacks?: Set<() => void>;
 }
 
 const unitIconCache: Map<string, UnitIconCacheEntry> = new Map();
@@ -41,13 +44,42 @@ export function unitIconCacheKey(unit: UnitIconTarget | null | undefined): strin
   return (unit?.iconCandidates || unit?.iconUrl || unit?.icon || unit?.label || '').toString();
 }
 
-export function loadAreaIcon(url: string): AreaIconImageEntry {
+function flushAreaIconCallbacks(entry: AreaIconImageEntry): void {
+  const callbacks = entry.callbacks;
+  if (!callbacks?.size) return;
+  entry.callbacks = undefined;
+  for (const callback of callbacks) callback();
+}
+
+function addAreaIconCallback(entry: AreaIconImageEntry, callback: (() => void) | undefined): void {
+  if (!callback) return;
+  if (entry.loaded) {
+    callback();
+    return;
+  }
+  if (entry.failed) return;
+  if (!entry.callbacks) entry.callbacks = new Set<() => void>();
+  entry.callbacks.add(callback);
+}
+
+export function loadAreaIcon(url: string, onLoad?: () => void): AreaIconImageEntry {
   const cached = areaIconImageCache.get(url);
-  if (cached) return cached;
+  if (cached) {
+    addAreaIconCallback(cached, onLoad);
+    return cached;
+  }
   const entry: AreaIconImageEntry = { img: new Image(), loaded: false };
   entry.img.crossOrigin = 'anonymous';
-  entry.img.onload = () => { entry.loaded = true; };
-  entry.img.onerror = () => { entry.loaded = false; };
+  addAreaIconCallback(entry, onLoad);
+  entry.img.onload = () => {
+    entry.loaded = true;
+    flushAreaIconCallbacks(entry);
+  };
+  entry.img.onerror = () => {
+    entry.loaded = false;
+    entry.failed = true;
+    entry.callbacks = undefined;
+  };
   entry.img.src = url;
   areaIconImageCache.set(url, entry);
   return entry;
@@ -136,17 +168,40 @@ function loadNextUnitIcon(key: string): void {
     entry.status = 'loaded';
     entry.url = url;
     replaceUnitIconPlaceholders(key, url);
+    const callbacks = entry.callbacks;
+    entry.callbacks = undefined;
+    if (callbacks) {
+      for (const callback of callbacks) callback(url);
+    }
   };
   image.onerror = () => loadNextUnitIcon(key);
   image.src = url;
 }
 
-export function resolveUnitIconUrl(unit: UnitIconTarget | null | undefined, key = unitIconCacheKey(unit)): string {
+function addUnitIconResolvedCallback(entry: UnitIconCacheEntry, callback: ((url: string) => void) | undefined): void {
+  if (!callback) return;
+  if (entry.status === 'loaded' && entry.url) {
+    callback(entry.url);
+    return;
+  }
+  if (entry.status !== 'pending') return;
+  if (!entry.callbacks) entry.callbacks = new Set<(url: string) => void>();
+  entry.callbacks.add(callback);
+}
+
+export function resolveUnitIconUrl(
+  unit: UnitIconTarget | null | undefined,
+  key = unitIconCacheKey(unit),
+  onResolved?: (url: string) => void,
+): string {
   const candidates = unit?.iconCandidates || (unit?.iconUrl ? [unit.iconUrl] : []);
   if (!candidates.length) return '';
   const cached = unitIconCache.get(key);
   if (cached?.status === 'loaded') return cached.url || '';
-  if (cached?.status === 'pending') return '';
+  if (cached?.status === 'pending') {
+    addUnitIconResolvedCallback(cached, onResolved);
+    return '';
+  }
   if (cached?.status === 'failed' && cached.candidateCount === candidates.length) return '';
   seedUnitIconCacheFromDom();
   const domUrl = resolveLoadedUnitIconFromDom(candidates);
@@ -154,7 +209,9 @@ export function resolveUnitIconUrl(unit: UnitIconTarget | null | undefined, key 
     unitIconCache.set(key, { status: 'loaded', url: domUrl });
     return domUrl;
   }
-  unitIconCache.set(key, { status: 'pending', candidates: [...candidates], index: 0 });
+  const entry: UnitIconCacheEntry = { status: 'pending', candidates: [...candidates], index: 0 };
+  addUnitIconResolvedCallback(entry, onResolved);
+  unitIconCache.set(key, entry);
   loadNextUnitIcon(key);
   return '';
 }
