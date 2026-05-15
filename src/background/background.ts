@@ -60,6 +60,7 @@ interface ColorCacheEntry {
     failedAt?: number;
     error?: string;
     softFailure?: boolean;
+    legacyTried?: boolean;
 }
 interface UnitDataCacheEntry {
     units?: UnitDataItem[];
@@ -97,6 +98,7 @@ interface GetCurrentPatchMessage {
 interface GetPlayerColorsMessage {
     type: 'getPlayerColors';
     matchId: string | number;
+    profileId?: string | number | null;
 }
 interface GetUnitDataMessage {
     type: 'getUnitData';
@@ -504,7 +506,7 @@ chrome.runtime.onMessage.addListener((msg: BackgroundMessage, sender: chrome.run
                 sendResponse({ success: false, error: 'disabled', disabled: true });
                 return;
             }
-            handleGetPlayerColors(matchId)
+            handleGetPlayerColors(matchId, { profileId: msg.profileId })
                 .then(payload => sendResponse(payload))
                 .catch((error: unknown) => sendResponse({ success: false, error: (error as {
                     message?: string;
@@ -597,16 +599,21 @@ async function fetchOneCivUnits(slug: string): Promise<UnitDataItem[] | null> {
     inFlightUnitDataRequests.set(slug, promise);
     return promise;
 }
-async function handleGetPlayerColors(matchId: string): Promise<GetPlayerColorsResponse> {
+export interface GetPlayerColorsOptions {
+    profileId?: string | number | null;
+}
+export async function handleGetPlayerColors(matchId: string, options: GetPlayerColorsOptions = {}): Promise<GetPlayerColorsResponse> {
     const cacheKey = COLORS_CACHE_KEY_PREFIX + matchId;
     const cached = await chrome.storage.local.get(cacheKey) as Record<string, ColorCacheEntry | undefined>;
     const entry = cached[cacheKey];
+    const profileId = normalizeProfileId(options.profileId);
     if (entry?.players) {
         return { success: true, players: entry.players, cached: true };
     }
     if (entry?.failedAt) {
         const ttl = entry.softFailure ? COLORS_SOFT_FAILURE_TTL_MS : COLORS_NEGATIVE_TTL_MS;
-        if (Date.now() - entry.failedAt < ttl) {
+        const shouldTryProfileFallback = profileId && entry.softFailure && !entry.legacyTried;
+        if (!shouldTryProfileFallback && Date.now() - entry.failedAt < ttl) {
             return { success: false, error: entry.error || 'cached_failure', cached: true };
         }
     }
@@ -615,10 +622,10 @@ async function handleGetPlayerColors(matchId: string): Promise<GetPlayerColorsRe
     }
     const inflight: Promise<GetPlayerColorsResponse> = (async () => {
         try {
-            if (Date.now() < backoffUntil) {
+            if (Date.now() < backoffUntil && !profileId) {
                 return { success: false, error: 'rate_limited', rateLimited: true };
             }
-            const players = await fetchAndParsePlayerColors(matchId);
+            const players = await fetchAndParsePlayerColors(matchId, profileId);
             await storeColorEntry(cacheKey, { players, savedAt: Date.now() });
             return { success: true, players, cached: false };
         }
@@ -633,7 +640,12 @@ async function handleGetPlayerColors(matchId: string): Promise<GetPlayerColorsRe
                 await storeColorEntry(cacheKey, { failedAt: Date.now(), error: message });
             }
             else if (isSoftFailure(message)) {
-                await storeColorEntry(cacheKey, { failedAt: Date.now(), error: message, softFailure: true });
+                await storeColorEntry(cacheKey, {
+                    failedAt: Date.now(),
+                    error: message,
+                    softFailure: true,
+                    legacyTried: message.startsWith('legacy_replay_'),
+                });
             }
             return { success: false, error: message };
         }
@@ -646,7 +658,13 @@ async function handleGetPlayerColors(matchId: string): Promise<GetPlayerColorsRe
         inFlightColorRequests.delete(matchId);
     }
 }
-function isPermanentFailure(message: string | null | undefined): boolean {
+function normalizeProfileId(profileId: string | number | null | undefined): string | null {
+    if (profileId == null)
+        return null;
+    const value = String(profileId).trim();
+    return /^\d+$/.test(value) ? value : null;
+}
+export function isPermanentFailure(message: string | null | undefined): boolean {
     if (!message)
         return false;
     if (message === 'no_replay_file')
@@ -659,7 +677,7 @@ function isPermanentFailure(message: string | null | undefined): boolean {
         return true;
     return false;
 }
-function isSoftFailure(message: string | null | undefined): boolean {
+export function isSoftFailure(message: string | null | undefined): boolean {
     if (!message)
         return false;
     if (/Failed to fetch/i.test(message))
@@ -670,40 +688,90 @@ function isSoftFailure(message: string | null | undefined): boolean {
         return true;
     if (/^blob_fetch_/.test(message))
         return true;
+    if (/^replay_api_5\d\d$/.test(message))
+        return true;
+    if (/^legacy_replay_/.test(message))
+        return true;
     if (/HTTP \d+ downloading replay/i.test(message))
         return true;
     return false;
 }
-async function fetchAndParsePlayerColors(matchId: string): Promise<PlayerColorInfo[]> {
+async function fetchAndParsePlayerColors(matchId: string, profileId: string | null = null): Promise<PlayerColorInfo[]> {
     const cached = replayUrlCache.get(matchId);
     let replayUrl = (cached && Date.now() < cached.expiry) ? cached.url : null;
+    let arrayBuffer: ArrayBuffer | null = null;
     replayUrlCache.delete(matchId);
     if (!replayUrl) {
-        const apiUrl = `${REPLAY_API}?matchIDs=[${matchId}]&title=age4`;
-        const apiResponse = await fetch(apiUrl, { headers: { 'User-Agent': UA } });
-        let data: ReplayApiResponse;
-        try {
-            data = await parseReplayApiJson(apiResponse, 'replay metadata');
+        if (profileId && Date.now() < backoffUntil) {
+            arrayBuffer = await fetchLegacyReplayArrayBuffer(matchId, profileId, new Error('rate_limited'));
         }
-        catch (e) {
-            const message = (e as { message?: string })?.message || String(e);
-            if (message === 'Rate limited') throw new Error('rate_limited');
-            const m = message.match(/HTTP (\d+)/);
-            if (m) throw new Error(`replay_api_${m[1]}`);
-            throw new Error('replay_api_no_data');
+        else {
+            try {
+                replayUrl = await fetchReplayFileUrl(matchId);
+            }
+            catch (err) {
+                if (!profileId) throw err;
+                arrayBuffer = await fetchLegacyReplayArrayBuffer(matchId, profileId, err);
+            }
         }
-        if (data.result?.code !== 0 || !Array.isArray(data.replayFiles)) {
-            throw new Error('replay_api_no_data');
-        }
-        const replayFile = data.replayFiles.find((f: ReplayFile) => f.datatype === 0 && f.size > 0 && f.url);
-        if (!replayFile) throw new Error('no_replay_file');
-        replayUrl = replayFile.url as string;
     }
-    updatePatchFromUrl(replayUrl);
-    const blobResponse = await fetch(replayUrl);
-    if (!blobResponse.ok)
-        throw new Error(`blob_fetch_${blobResponse.status}`);
-    const arrayBuffer = await blobResponse.arrayBuffer();
+    if (!arrayBuffer) {
+        if (!replayUrl) throw new Error('no_replay_file');
+        updatePatchFromUrl(replayUrl);
+        try {
+            const blobResponse = await fetch(replayUrl);
+            if (!blobResponse.ok)
+                throw new Error(`blob_fetch_${blobResponse.status}`);
+            arrayBuffer = await blobResponse.arrayBuffer();
+        }
+        catch (err) {
+            if (!profileId) throw err;
+            arrayBuffer = await fetchLegacyReplayArrayBuffer(matchId, profileId, err);
+        }
+    }
+    return parseReplayPlayersFromArrayBuffer(arrayBuffer, matchId);
+}
+async function fetchReplayFileUrl(matchId: string): Promise<string> {
+    const apiUrl = `${REPLAY_API}?matchIDs=[${matchId}]&title=age4`;
+    const apiResponse = await fetch(apiUrl, { headers: { 'User-Agent': UA } });
+    let data: ReplayApiResponse;
+    try {
+        data = await parseReplayApiJson(apiResponse, 'replay metadata');
+    }
+    catch (e) {
+        const message = (e as { message?: string })?.message || String(e);
+        if (message === 'Rate limited') throw new Error('rate_limited');
+        const m = message.match(/HTTP (\d+)/);
+        if (m) throw new Error(`replay_api_${m[1]}`);
+        throw new Error('replay_api_no_data');
+    }
+    if (data.result?.code !== 0 || !Array.isArray(data.replayFiles)) {
+        throw new Error('replay_api_no_data');
+    }
+    const replayFile = data.replayFiles.find((f: ReplayFile) => f.datatype === 0 && f.size > 0 && f.url);
+    if (!replayFile) throw new Error('no_replay_file');
+    return replayFile.url as string;
+}
+async function fetchLegacyReplayArrayBuffer(matchId: string, profileId: string, originalError: unknown): Promise<ArrayBuffer> {
+    const fallbackUrl = `https://api.ageofempires.com/api/GameStats/AgeIV/GetMatchReplay?matchId=${encodeURIComponent(matchId)}&profileId=${encodeURIComponent(profileId)}`;
+    try {
+        const response = await fetch(fallbackUrl, {
+            headers: {
+                'User-Agent': UA,
+                'Accept': 'application/zip,application/octet-stream,*/*',
+            },
+        });
+        if (!response.ok)
+            throw new Error(`legacy_replay_${response.status}`);
+        return await response.arrayBuffer();
+    }
+    catch (fallbackError) {
+        const fallbackMessage = (fallbackError as { message?: string })?.message || String(fallbackError);
+        dbgWarn('[replay] Legacy replay fallback failed:', fallbackMessage, 'after', (originalError as { message?: string })?.message || String(originalError));
+        throw new Error(fallbackMessage.startsWith('legacy_replay_') ? fallbackMessage : 'legacy_replay_failed');
+    }
+}
+async function parseReplayPlayersFromArrayBuffer(arrayBuffer: ArrayBuffer, matchId: string): Promise<PlayerColorInfo[]> {
     let players: PlayerColorInfo[];
     try {
         const result = await extractPlayerColors(arrayBuffer);

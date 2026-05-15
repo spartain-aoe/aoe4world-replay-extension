@@ -17,6 +17,10 @@ export interface GetPlayerColorsResponse {
   players?: ReplayPlayer[];
 }
 
+export interface GetReplayPlayersOptions {
+  profileId?: string | number | null;
+}
+
 export type ReplayColorLoadResult =
   | { ok: true; players: ReplayPlayer[]; cached?: boolean }
   | { ok: false; error?: string; rateLimited?: boolean; disabled?: boolean; cached?: boolean };
@@ -84,16 +88,17 @@ export function ensureChartInjector(force = false): void {
   }
 }
 
-export function getReplayPlayers(matchId: string): Promise<ReplayColorLoadResult> {
+export function getReplayPlayers(matchId: string, options: GetReplayPlayersOptions = {}): Promise<ReplayColorLoadResult> {
   if (!matchId) return Promise.resolve({ ok: false, error: 'missing_match_id' });
   if (!recolorEnabled()) return Promise.resolve({ ok: false, error: 'disabled', disabled: true });
   const memoized = recallReplayPlayers(matchId);
   if (memoized) return Promise.resolve({ ok: true, players: memoized, cached: true });
   const existing = replayColorsInFlight.get(matchId);
   if (existing) return existing;
+  const profileId = options.profileId == null ? null : String(options.profileId);
 
   const request = new Promise<ReplayColorLoadResult>((resolve) => {
-    chrome.runtime.sendMessage({ type: 'getPlayerColors', matchId }, (response: GetPlayerColorsResponse | undefined) => {
+    chrome.runtime.sendMessage({ type: 'getPlayerColors', matchId, profileId }, (response: GetPlayerColorsResponse | undefined) => {
       if (chrome.runtime.lastError) {
         resolve({ ok: false, error: chrome.runtime.lastError.message || 'runtime_error' });
         return;
@@ -119,13 +124,13 @@ export function getReplayPlayers(matchId: string): Promise<ReplayColorLoadResult
   return request;
 }
 
-export function beginReplayColorLoad(matchId: string): Promise<ReplayColorLoadResult> {
+export function beginReplayColorLoad(matchId: string, options: GetReplayPlayersOptions = {}): Promise<ReplayColorLoadResult> {
   if (recolorEnabled()) {
     sendChartInjectorControlMessage({ source: 'aoe4-color-ext', type: 'colors-loading' });
   } else {
     releaseNativeChartColorGate();
   }
-  return getReplayPlayers(matchId);
+  return getReplayPlayers(matchId, options);
 }
 
 export function replayColorMapForSummary(summary: GameSummary | null | undefined): Record<string, string> {

@@ -1,6 +1,7 @@
-import { findAnchor } from './dom.ts';
+import { findAnchor, getGameIdFromUrl } from './dom.ts';
 import { checkReplay, getGameDateText } from './replay-availability.ts';
 import type { ReplayAvailabilityResult } from './types.ts';
+import { SUMMARY_REPLAY_OVERRIDE_KEY } from '../shared/storage-keys.ts';
 
 interface LaunchReplayResponse {
   needsInstall?: boolean;
@@ -11,6 +12,30 @@ interface LaunchReplayResponse {
 type LoadingDiv = HTMLDivElement & {
   _interval?: ReturnType<typeof setInterval>;
 };
+
+let allowSummaryHiddenReplays = false;
+let scrollScanTimer: ReturnType<typeof setTimeout> | null = null;
+
+chrome.storage.local.get(SUMMARY_REPLAY_OVERRIDE_KEY, (result: Record<string, unknown>) => {
+  allowSummaryHiddenReplays = result[SUMMARY_REPLAY_OVERRIDE_KEY] === true;
+  if (allowSummaryHiddenReplays) scanGameRows(true);
+});
+
+chrome.storage.onChanged.addListener((changes: Record<string, chrome.storage.StorageChange>, area: string) => {
+  if (area !== 'local') return;
+  const change = changes[SUMMARY_REPLAY_OVERRIDE_KEY];
+  if (!change || change.newValue !== true) return;
+  allowSummaryHiddenReplays = true;
+  scanGameRows(true);
+});
+
+window.addEventListener('scroll', () => {
+  if (scrollScanTimer) return;
+  scrollScanTimer = setTimeout(() => {
+    scrollScanTimer = null;
+    scanGameRows();
+  }, 100);
+}, { passive: true });
 
 function getGameIdFromRow(row: HTMLElement): string | null {
   return row.dataset?.gameId || null;
@@ -117,6 +142,24 @@ function removeLoading(el: LoadingDiv): void {
   el.remove();
 }
 
+function removeReplayControls(row: HTMLElement): void {
+  row.querySelectorAll<HTMLElement>('.aoe4-replay-btn, .aoe4-replay-loading, .aoe4-replay-unavailable')
+    .forEach((el) => {
+      if (el.classList.contains('aoe4-replay-loading')) {
+        const loading = el as LoadingDiv;
+        if (loading._interval) clearInterval(loading._interval);
+      }
+      el.remove();
+    });
+}
+
+function hasReplayControls(row: HTMLElement): boolean {
+  row.querySelectorAll<HTMLElement>('.aoe4-replay-btn').forEach((btn) => {
+    if (!btn.firstElementChild) btn.remove();
+  });
+  return !!row.querySelector('.aoe4-replay-btn, .aoe4-replay-loading, .aoe4-replay-unavailable');
+}
+
 function createUnavailableDiv(): HTMLDivElement {
   const div = document.createElement('div');
   div.className = 'aoe4-replay-unavailable';
@@ -126,14 +169,36 @@ function createUnavailableDiv(): HTMLDivElement {
   return div;
 }
 
+function rowHasViewSummary(anchor: HTMLElement): boolean {
+  return /\bview\s+summary\b/i.test(anchor.textContent || '');
+}
+
+function shouldRenderReplayControls(anchor: HTMLElement): boolean {
+  return allowSummaryHiddenReplays || rowHasViewSummary(anchor);
+}
+
+function rowViewportPriority(row: HTMLElement): number {
+  const rect = row.getBoundingClientRect?.();
+  if (!rect || typeof window.innerHeight !== 'number') return 0;
+  if (rect.bottom >= 0 && rect.top <= window.innerHeight) {
+    return Math.max(0, rect.top);
+  }
+  const distance = rect.bottom < 0 ? Math.abs(rect.bottom) : Math.abs(rect.top - window.innerHeight);
+  return 100000 + distance;
+}
+
 function processRow(row: Element): void {
   const gameRow = row as HTMLElement;
   const gameId = getGameIdFromRow(gameRow);
   if (!gameId) return;
-  if (gameRow.querySelector('.aoe4-replay-btn, .aoe4-replay-loading, .aoe4-replay-unavailable')) return;
 
   const anchor = findAnchor(gameRow) as HTMLElement | null;
   if (!anchor) return;
+  if (!shouldRenderReplayControls(anchor)) {
+    removeReplayControls(gameRow);
+    return;
+  }
+  if (hasReplayControls(gameRow)) return;
 
   const dateText = getGameDateText(gameRow);
   if (dateText.match(/year/)) {
@@ -150,6 +215,14 @@ function processRow(row: Element): void {
     const replay = result as ReplayAvailabilityResult;
     clearTimeout(timeout);
     removeLoading(loading);
+    if (!gameRow.isConnected || !anchor.isConnected) {
+      scanGameRows(true);
+      return;
+    }
+    if (!shouldRenderReplayControls(anchor)) {
+      removeReplayControls(gameRow);
+      return;
+    }
     if (replay?.available) {
       anchor.appendChild(createReplayDiv(gameId, replay.prevPatch));
     } else {
@@ -158,21 +231,21 @@ function processRow(row: Element): void {
   });
 }
 
-const seen = new WeakSet<Element>();
-const io = new IntersectionObserver((entries: IntersectionObserverEntry[]) => {
-  for (const entry of entries) {
-    if (!entry.isIntersecting) continue;
-    const row = entry.target;
-    io.unobserve(row);
-    processRow(row);
-  }
-}, { rootMargin: '200px' });
-
-export function scanGameRows(): void {
-  const rows = document.querySelectorAll<HTMLElement>('[data-game-id]');
+export function scanGameRows(force = false): void {
+  const detailGameId = getGameIdFromUrl(window.location?.href || '');
+  const rows = [...document.querySelectorAll<HTMLElement>('[data-game-id]')]
+    .sort((a, b) => rowViewportPriority(a) - rowViewportPriority(b));
   for (const row of rows) {
-    if (seen.has(row)) continue;
-    seen.add(row);
-    io.observe(row);
+    if (detailGameId && row.dataset.gameId !== detailGameId) continue;
+    const anchor = findAnchor(row) as HTMLElement | null;
+    if (!anchor) continue;
+    if (anchor && !shouldRenderReplayControls(anchor)) {
+      removeReplayControls(row);
+      continue;
+    }
+    const hasControls = hasReplayControls(row);
+    if (!hasControls || force) {
+      processRow(row);
+    }
   }
 }

@@ -1,3 +1,5 @@
+import { SUMMARY_REPLAY_OVERRIDE_KEY } from '../shared/storage-keys.ts';
+
 function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
@@ -51,8 +53,21 @@ const optCharts = document.getElementById('opt-charts') as HTMLInputElement;
 const optRecolor = document.getElementById('opt-recolor') as HTMLInputElement;
 const optDebug = document.getElementById('opt-debug') as HTMLInputElement;
 const reloadHint = document.getElementById('reload-hint') as HTMLElement;
+const SETTINGS_CLICK_WINDOW_MS = 2500;
+const SETTINGS_CLICK_TARGET = 10;
+let settingsClickTimes: number[] = [];
+
+function recordSettingsToggleClick(): void {
+  const now = Date.now();
+  settingsClickTimes = settingsClickTimes.filter(time => now - time <= SETTINGS_CLICK_WINDOW_MS);
+  settingsClickTimes.push(now);
+  if (settingsClickTimes.length < SETTINGS_CLICK_TARGET) return;
+  settingsClickTimes = [];
+  chrome.storage.local.set({ [SUMMARY_REPLAY_OVERRIDE_KEY]: true });
+}
 
 settingsToggle.addEventListener('click', () => {
+  recordSettingsToggleClick();
   const open = !settingsPanel.classList.contains('open');
   settingsPanel.classList.toggle('open', open);
   settingsPanel.setAttribute('aria-hidden', open ? 'false' : 'true');

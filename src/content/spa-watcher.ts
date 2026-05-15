@@ -39,11 +39,17 @@ function scheduleScan(delayMs: number, replacePending = false): void {
   }, delayMs);
 }
 
+function scheduleScanBurst(): void {
+  scheduleScan(500, true);
+  setTimeout(scanForRows, 1500);
+  setTimeout(scanForRows, 4000);
+}
+
 const observer = new MutationObserver(() => {
   const currentUrl = window.location.href;
   if (currentUrl !== lastUrl) {
     lastUrl = currentUrl;
-    scheduleScan(500, true);
+    scheduleScanBurst();
   } else {
     scheduleScan(0);
   }
@@ -55,4 +61,4 @@ observer.observe(document.body || document.documentElement, {
 });
 
 lastUrl = window.location.href;
-settingsReady.then(() => scheduleScan(800));
+settingsReady.then(scheduleScanBurst);

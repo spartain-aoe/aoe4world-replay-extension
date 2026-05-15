@@ -13,9 +13,9 @@
  *   one visible frame. The chart therefore appears fully-rendered immediately.
  *
  * Detection strategy:
- *   The animation clips drawing to a rect that grows over time. Resource
- *   charts reveal bottom-to-top; other injected charts reveal left-to-right.
- *   Either way, only a small portion of the plotted series is visible early.
+ *   The animation changes over time. Resource charts rise from the y-baseline;
+ *   other injected charts reveal left-to-right. Either way, the plotted series
+ *   is visibly incomplete early.
  *
  *   With the BUG:
  *     The guard cancels the animation and draws the full chart immediately.
@@ -23,8 +23,8 @@
  *
  *   With the FIX:
  *     The guard skips the redraw while animation is in progress.
- *     The centre strip has low alpha at t=50ms (only grid lines plus a small
- *     clipped portion of series lines).
+ *     The centre strip differs at t=50ms because the resource series is still
+ *     near the baseline rather than at its final shape.
  *     At t=950ms the animation is complete and the centre strip has full alpha.
  *
  * NOTE: Chrome extension content scripts run in an isolated world.  Expando
@@ -75,10 +75,10 @@ async function navigate(url, waitMs = 14000) {
  * Reads the alpha sum of the CENTRE VERTICAL STRIP of the injected canvas.
  *
  * Strip: x = [50%..60%] of canvas.width, full height.
-  * The animation clips plotted series to a partially-grown rect. During the
-  * early bottom-to-top resource reveal, this full-height strip contains only a
-  * small portion of the final series pixels; at progress = 1 it contains the
-  * full series — so alphaSum is significantly higher.
+  * The animation starts resource series near the y-baseline. During the early
+  * rise-up reveal, this full-height strip contains only a small portion of the
+  * final series pixels; at progress = 1 it contains the full final series — so
+  * alphaSum is still lower and the hash differs.
  */
 function getCentreStripAlpha() {
   return page.evaluate(() => {
@@ -206,21 +206,20 @@ function assert(condition, msg) {
   });
 
   /**
-   * PRIMARY TEST — centre strip has low alpha during early animation phase.
+   * PRIMARY TEST — centre strip differs during early animation phase.
    *
    * Trigger the hover guard immediately after chart selection.  If the guard
    * cancels the animation (bug), the full chart is drawn at once and the
    * centre strip has HIGH alpha at t=50ms.  If the guard correctly skips the
-    * redraw while animation is running (fix), the clip rect is still small at
-    * t=50ms, so the strip contains only thin grid-lines and a small clipped
-    * portion of the series (LOW alpha).  After 900ms the animation is complete
-    * and the strip is full.
+    * redraw while animation is running (fix), the resource line is still near
+    * the baseline at t=50ms, so this strip is visibly different from the final
+    * frame. After 900ms the animation is complete and the strip is full.
    *
-   * Assertion: earlyAlpha  <  lateAlpha × 0.4
-   *   Bug:  153 000 < 153 000 × 0.4 = 61 000 ?  NO  → FAILS  ✓
-   *   Fix:   40 000 < 153 000 × 0.4 = 61 000 ?  YES → PASSES ✓
-   */
-  await test('centre strip has low alpha during animation (guard does not cancel it)', async () => {
+    * Assertion: earlyAlpha < lateAlpha × 0.95 and early hash differs.
+    *   Bug: full redraw immediately → same hash and near-identical alpha.
+    *   Fix: animated frame → different hash and lower alpha.
+    */
+  await test('centre strip changes during animation (guard does not cancel it)', async () => {
     await page.mouse.move(50, 50);
     await page.waitForTimeout(100);
 
@@ -243,12 +242,17 @@ function assert(condition, msg) {
     assert(lateSnap.alphaSum > 0,
       `late canvas centre strip is empty — chart never rendered. ${JSON.stringify(lateSnap)}`);
 
-    const threshold = lateSnap.alphaSum * 0.4;
+    const threshold = lateSnap.alphaSum * 0.95;
     assert(
       earlySnap.alphaSum < threshold,
-      `centre strip alpha at 50ms (${earlySnap.alphaSum}) is NOT lower than 40% of the` +
-      ` final alpha (${lateSnap.alphaSum} × 0.4 = ${Math.round(threshold)}) — ` +
+      `centre strip alpha at 50ms (${earlySnap.alphaSum}) is NOT lower than 95% of the` +
+      ` final alpha (${lateSnap.alphaSum} × 0.95 = ${Math.round(threshold)}) — ` +
       `animation was cancelled by the hover guard (full chart drawn immediately). ` +
+      `early=${JSON.stringify(earlySnap)}, late=${JSON.stringify(lateSnap)}`,
+    );
+    assert(
+      earlySnap.hash !== lateSnap.hash,
+      `early and late canvas strip hashes are identical — animation likely completed immediately. ` +
       `early=${JSON.stringify(earlySnap)}, late=${JSON.stringify(lateSnap)}`,
     );
 
@@ -292,11 +296,16 @@ function assert(condition, msg) {
     assert(lateSnap.alphaSum > 0,
       `late canvas empty after second switch. ${JSON.stringify(lateSnap)}`);
 
-    const threshold = lateSnap.alphaSum * 0.4;
+    const threshold = lateSnap.alphaSum * 0.95;
     assert(
       earlySnap.alphaSum < threshold,
       `second switch: early alpha (${earlySnap.alphaSum}) not below threshold ` +
       `(${Math.round(threshold)}) — animation cancelled again. ` +
+      `early=${JSON.stringify(earlySnap)}, late=${JSON.stringify(lateSnap)}`,
+    );
+    assert(
+      earlySnap.hash !== lateSnap.hash,
+      `second switch: early and late hashes are identical — animation likely completed immediately. ` +
       `early=${JSON.stringify(earlySnap)}, late=${JSON.stringify(lateSnap)}`,
     );
 

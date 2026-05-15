@@ -194,12 +194,13 @@ export function drawTimelineCanvasChart(
   const plotW = Math.max(1, cssWidth - margin.left - margin.right);
   const plotH = Math.max(1, cssHeight - margin.top - margin.bottom);
   const animationProgress = Math.max(0, Math.min(1, options.animationProgress ?? 1));
-  const animationClip = usesRiseUpAnimation(chart)
+  const riseUpAnimation = usesRiseUpAnimation(chart);
+  const animationClip = riseUpAnimation
     ? {
         x: margin.left,
-        y: margin.top + plotH * (1 - animationProgress),
+        y: margin.top,
         width: plotW,
-        height: plotH * animationProgress,
+        height: plotH,
       }
     : {
         x: margin.left,
@@ -252,6 +253,12 @@ export function drawTimelineCanvasChart(
   ctx.beginPath();
   ctx.rect(animationClip.x, animationClip.y, animationClip.width, animationClip.height);
   ctx.clip();
+  const riseBaselineY = (yMin <= 0 && yMax >= 0)
+    ? summaryScaleY(0, yMin, yMax, margin, plotH)
+    : margin.top + plotH;
+  const animatedLineY = (y: number): number => riseUpAnimation
+    ? riseBaselineY + (y - riseBaselineY) * animationProgress
+    : y;
 
   if (chart.type === 'army') {
     const collapsedPlayers = getCollapsedPlayers(chart);
@@ -379,7 +386,7 @@ export function drawTimelineCanvasChart(
       let pathOpen = false;
       for (let i = 0; i < values.length; i++) {
         const x = summaryScaleX(i, values.length, margin, plotW);
-        const y = ys[i];
+        const y = animatedLineY(ys[i]);
         if (!pathOpen) { ctx.moveTo(x, y); pathOpen = true; }
         else ctx.lineTo(x, y);
       }

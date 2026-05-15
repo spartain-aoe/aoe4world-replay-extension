@@ -542,7 +542,7 @@ describe('drawTimelineCanvasChart', () => {
       assert.ok(clipRect.args[2] > 450 && clipRect.args[2] < 500, `expected about half plot width, got ${clipRect.args[2]}`);
     });
 
-    it('clips resources gathered charts bottom-to-top during animation', () => {
+    it('animates resources gathered charts up from the baseline', () => {
       const canvas = makeCanvas();
       const s1 = lineSeriesItem('p1', Array.from({ length: SAMPLE_COUNT }, (_, i) => i * 3));
       const chart = makeChart('line', [s1], { value: 'aoe4plus:resources-gathered-food' });
@@ -552,9 +552,20 @@ describe('drawTimelineCanvasChart', () => {
       const clipRect = canvas._ctx._calls.find(c => c.m === 'rect');
       assert.ok(clipRect, 'expected plot clip rect');
       assert.equal(clipRect.args[0], 28);
-      assert.ok(clipRect.args[1] > 200, `expected bottom-up clip to start below plot top, got y=${clipRect.args[1]}`);
       assert.ok(clipRect.args[2] > 900, `expected full plot width for rise-up animation, got ${clipRect.args[2]}`);
-      assert.ok(clipRect.args[3] > 180 && clipRect.args[3] < 230, `expected about half plot height, got ${clipRect.args[3]}`);
+      assert.ok(clipRect.args[3] > 400, `expected full plot height for rise-up animation, got ${clipRect.args[3]}`);
+
+      const callsAfterClip = canvas._ctx._calls.slice(canvas._ctx._calls.findIndex(c => c.m === 'clip') + 1);
+      const lineTos = callsAfterClip.filter(c => c.m === 'lineTo');
+      const animatedLastY = lineTos[lineTos.length - 1]?.args[1];
+      assert.ok(animatedLastY > 200, `expected half-progress line to remain near baseline, got y=${animatedLastY}`);
+
+      const fullCanvas = makeCanvas();
+      drawTimelineCanvasChart(fullCanvas, chart, null, { animationProgress: 1 });
+      const fullCallsAfterClip = fullCanvas._ctx._calls.slice(fullCanvas._ctx._calls.findIndex(c => c.m === 'clip') + 1);
+      const fullLineTos = fullCallsAfterClip.filter(c => c.m === 'lineTo');
+      const finalLastY = fullLineTos[fullLineTos.length - 1]?.args[1];
+      assert.ok(animatedLastY > finalLastY, `expected line to rise toward final y=${finalLastY}, got ${animatedLastY}`);
     });
 
     it('animateTimelineCanvasChart starts with a zero-width plot and schedules a frame', () => {

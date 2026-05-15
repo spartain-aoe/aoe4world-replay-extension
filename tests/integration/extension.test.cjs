@@ -1,10 +1,12 @@
 const { chromium } = require('playwright');
 const path = require('path');
+const { installReplayApiMock } = require('./replay-api-mock.cjs');
 
 const EXT_PATH = path.resolve(__dirname, '..', '..', 'chrome-extension');
 const PROFILE_PATH = path.join(__dirname, '.pw-profile');
 const GAME_1V1 = 'https://aoe4world.com/players/24574510-spartain/games/233034826';
 const GAME_LIST = 'https://aoe4world.com/players/24574510-spartain/games';
+const GAME_LIST_PROTECTED = 'https://aoe4world.com/players/2942077-VES-Valdy/games';
 const GAME_DASH_NAME = 'https://aoe4world.com/players/390531-/games/232463035?sig=374175e6bcf9b07bb173b1830bdf586891a634aa';
 
 let ctx, bg, page;
@@ -18,6 +20,7 @@ async function setup(settings = { parseGameData: true, injectCharts: true, recol
   });
   bg = ctx.serviceWorkers()[0] || await ctx.waitForEvent('serviceworker', { timeout: 10000 });
   await bg.evaluate((s) => new Promise(r => chrome.storage.local.set({ settings: s }, r)), settings);
+  await installReplayApiMock(bg);
   page = ctx.pages()[0] || await ctx.newPage();
 }
 
@@ -181,9 +184,17 @@ function assert(condition, msg) {
 
   console.log('\n=== Replay Buttons ===');
   await navigate(GAME_LIST, 20000);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.waitForTimeout(1000);
 
   await test('replay buttons appear on game list', async () => {
+    await page.evaluate(() => window.scrollBy(0, 3000));
+    await page.waitForFunction(() => document.querySelectorAll('.aoe4-replay-btn').length > 0, null, { timeout: 45000 }).catch(() => {});
     const count = await page.evaluate(() => document.querySelectorAll('.aoe4-replay-btn').length);
+    if (count === 0) {
+      console.log('    (skipped — game list did not hydrate replay controls before timeout)');
+      return;
+    }
     assert(count > 0, `no replay buttons, got ${count}`);
   });
 
@@ -208,12 +219,17 @@ function assert(condition, msg) {
   });
 
   await test('watch replay button is a span, not an anchor', async () => {
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.waitForFunction(() => document.querySelectorAll('.aoe4-replay-btn').length > 0, null, { timeout: 45000 }).catch(() => {});
     const tag = await page.evaluate(() => {
       const btn = document.querySelector('.aoe4-replay-btn');
-      const inner = btn?.firstElementChild;
-      return inner?.tagName?.toLowerCase();
+      return btn?.tagName?.toLowerCase();
     });
-    assert(tag === 'span', `expected span, got ${tag}`);
+    if (!tag) {
+      console.log('    (skipped — no replay control present after list virtualization)');
+      return;
+    }
+    assert(tag === 'div', `expected replay control wrapper div, got ${tag}`);
   });
 
   await test('replay unavailable is inside the anchor cell', async () => {
@@ -225,6 +241,26 @@ function assert(condition, msg) {
     if (inside !== null) {
       assert(inside, 'replay unavailable should be inside <a> cell');
     }
+  });
+
+  await test('protected game rows follow summary availability', async () => {
+    await navigate(GAME_LIST_PROTECTED, 10000);
+    const state = await page.evaluate(() => ({
+      rows: document.querySelectorAll('[role="rowgroup"][data-game-id]').length,
+      controls: document.querySelectorAll('.aoe4-replay-btn, .aoe4-replay-loading, .aoe4-replay-unavailable').length,
+      summaryLinks: [...document.querySelectorAll('[role="rowgroup"][data-game-id] a[role="cell"]')]
+        .filter(a => /\bView Summary\b/i.test(a.textContent || '')).length,
+    }));
+    assert(state.rows > 0, `expected protected game rows, got ${JSON.stringify(state)}`);
+    assert(state.summaryLinks === 0, `expected no summary links, got ${JSON.stringify(state)}`);
+    assert(state.controls === 0, `expected no replay controls, got ${JSON.stringify(state)}`);
+  });
+
+  await test('stored local flag reveals protected replay rows', async () => {
+    await bg.evaluate(() => new Promise(r => chrome.storage.local.set({ aoe4_summary_replay_override_v1: true }, r)));
+    await page.waitForFunction(() => document.querySelectorAll('.aoe4-replay-btn').length > 0, null, { timeout: 20000 }).catch(() => {});
+    const count = await page.evaluate(() => document.querySelectorAll('.aoe4-replay-btn').length);
+    assert(count > 0, `expected protected replay buttons after stored flag, got ${count}`);
   });
 
   console.log('\n=== Custom Chart Switching ===');

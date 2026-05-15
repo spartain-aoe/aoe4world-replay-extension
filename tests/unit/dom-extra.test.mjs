@@ -1,7 +1,7 @@
 import { describe, test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseHTML } from 'linkedom';
-import { closestWith, findTimelineElements, findCivIconPosition, findAnchor } from '../../src/content/dom.ts';
+import { closestWith, findTimelineElements, findCivIconPosition, findAnchor, getProfileIdFromUrl } from '../../src/content/dom.ts';
 
 let savedDocument;
 
@@ -85,6 +85,19 @@ describe('findCivIconPosition', () => {
     const doc = setup('<div id="row"><img src="first.png"/><span>mid</span><img src="last.png"/></div>');
     const result = findCivIconPosition(doc.getElementById('row'));
     assert.equal(result.getAttribute('src'), 'last.png');
+  });
+});
+
+describe('getProfileIdFromUrl', () => {
+  test('extracts profile id from game routes with slug text', () => {
+    assert.equal(
+      getProfileIdFromUrl('https://aoe4world.com/players/20431588-1-John-2-1/games/233206284?sig=x'),
+      '20431588',
+    );
+  });
+
+  test('returns null outside player game routes', () => {
+    assert.equal(getProfileIdFromUrl('https://aoe4world.com/players/20431588-1-John-2-1/games'), null);
   });
 });
 

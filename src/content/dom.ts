@@ -41,6 +41,11 @@ export function getGameIdFromUrl(url: string | null | undefined): string | null 
   return m ? m[1] : null;
 }
 
+export function getProfileIdFromUrl(url: string | null | undefined): string | null {
+  const m = String(url || '').match(/\/players\/(\d+)(?:-[^/]*)?\/games\/\d+/);
+  return m ? m[1] : null;
+}
+
 export function findCivIconPosition(row: Element): Element | null {
   const children = [...row.children];
   for (let i = children.length - 1; i >= 0; i--) {

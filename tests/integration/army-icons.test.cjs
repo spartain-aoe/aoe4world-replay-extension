@@ -15,6 +15,7 @@
 
 const { chromium } = require('playwright');
 const path = require('path');
+const { installReplayApiMock } = require('./replay-api-mock.cjs');
 
 const EXT_PATH = path.resolve(__dirname, '..', '..', 'chrome-extension');
 const PROFILE_PATH = path.join(__dirname, '.pw-profile-army-icons');
@@ -36,6 +37,7 @@ async function setup() {
     recolorSwatches: true,
     debugLogs: false,
   });
+  await installReplayApiMock(bg);
   page = ctx.pages()[0] || await ctx.newPage();
 }
 

@@ -1,4 +1,4 @@
-import { findTimelineElements, getGameIdFromUrl } from './dom.ts';
+import { findTimelineElements, getGameIdFromUrl, getProfileIdFromUrl } from './dom.ts';
 import { niceGeometryForChart } from './canvas-geom.ts';
 import { chartsEnabled, recolorEnabled, settingsReady, onSettingsChange } from './settings.ts';
 import {
@@ -47,6 +47,7 @@ import type {
   AgeUp,
   Chart,
   GameSummary,
+  ReplayPlayer,
   TimelineElements,
   TooltipCacheRow,
 } from './types.ts';
@@ -121,8 +122,9 @@ export function tryAddSummaryCharts(): void {
   timeline.root.__aoe4RouteToken = routeToken;
   delete timeline.root.__aoe4ColorsRequestedFor;
 
+  const profileId = getProfileIdFromUrl(window.location.href);
   const replayColorsPromise = recolorEnabled()
-    ? beginReplayColorLoad(gameId)
+    ? beginReplayColorLoad(gameId, { profileId })
     : Promise.resolve({ ok: false, disabled: true, error: 'disabled' } as ReplayColorLoadResult);
   if (!recolorEnabled()) releaseNativeChartColorGate();
   replayColorsPromise.then((result) => {
@@ -187,11 +189,40 @@ function applyReplayColorResult(
     return false;
   }
   releaseNativeChartColorGate();
-  if (!result.disabled && !result.rateLimited && !replayColorsWarned.has(gameId)) {
-    replayColorsWarned.add(gameId);
-    console.warn(`[replay] Could not get in-game player colors for match ${gameId}: ${result.error || 'unknown'}`);
-  }
+  warnReplayColorFailure(gameId, result);
   return false;
+}
+
+function warnReplayColorFailure(gameId: string, result: ReplayColorLoadResult): void {
+  if (result.ok || result.disabled || result.rateLimited || replayColorsWarned.has(gameId)) return;
+  replayColorsWarned.add(gameId);
+  console.warn(`[replay] Could not get in-game player colors for match ${gameId}: ${result.error || 'unknown'}`);
+}
+
+function applyReplayColorPlayers(
+  timeline: TimelineElements,
+  replayPlayers: ReplayPlayer[],
+  gameId: string,
+  routeToken: number,
+): void {
+  if (!isCurrentGameRequest(timeline, gameId, routeToken)) return;
+  const summary = timeline.__aoe4Summary;
+  if (!summary) {
+    if (!applyReplayPlayersToNativeChart(replayPlayers)) releaseNativeChartColorGate();
+    return;
+  }
+  summary._aoe4ReplayPlayers = replayPlayers;
+  if (timeline.chartBox?.__aoe4HoverActive) {
+    applyReplayColorsToNativeChart(summary);
+    return;
+  }
+  if (!applyReplayColorsToNativeChart(summary)) releaseNativeChartColorGate();
+  installTimelineMetrics(timeline, summary);
+  const activeValue = timeline.select.__aoe4SummaryActiveValue;
+  if (activeValue) {
+    const chart = timeline.select.__aoe4SummaryCharts?.get(activeValue);
+    if (chart) renderTimelineMetric(timeline, chart);
+  }
 }
 
 function buildSummaryUrl(): string {
@@ -408,35 +439,20 @@ function ensureReplayPlayerColors(timeline: TimelineElements): void {
   const summary = timeline.__aoe4Summary;
   const gameId = timeline.root.__aoe4GameId;
   const routeToken = timeline.root.__aoe4RouteToken;
-  if (!summary || !gameId || !isCurrentGameRequest(timeline, gameId, routeToken)) return;
+  if (!summary || !gameId || routeToken == null || !isCurrentGameRequest(timeline, gameId, routeToken)) return;
   if (summary._aoe4ReplayPlayers) return;
   if (timeline.root.__aoe4ColorsRequestedFor === gameId) return;
   timeline.root.__aoe4ColorsRequestedFor = gameId;
-  getReplayPlayers(gameId).then((result) => {
+  getReplayPlayers(gameId, { profileId: getProfileIdFromUrl(window.location.href) }).then((result) => {
     if (timeline.root.__aoe4ColorsRequestedFor === gameId) {
       delete timeline.root.__aoe4ColorsRequestedFor;
     }
     if (!isCurrentGameRequest(timeline, gameId, routeToken)) return;
     if (!result.ok) {
-      if (!result.disabled && !result.rateLimited && !replayColorsWarned.has(gameId)) {
-        replayColorsWarned.add(gameId);
-        console.warn(`[replay] Could not get in-game player colors for match ${gameId}: ${result.error || 'unknown'}`);
-      }
+      warnReplayColorFailure(gameId, result);
       return;
     }
-    const replayPlayers = result.players;
-    if (timeline.chartBox?.__aoe4HoverActive) {
-      applyReplayColorsToNativeChart({ ...summary, _aoe4ReplayPlayers: replayPlayers });
-      return;
-    }
-    summary._aoe4ReplayPlayers = replayPlayers;
-    applyReplayColorsToNativeChart(summary);
-    installTimelineMetrics(timeline, summary);
-    const activeValue = timeline.select.__aoe4SummaryActiveValue;
-    if (activeValue) {
-      const chart = timeline.select.__aoe4SummaryCharts?.get(activeValue);
-      if (chart) renderTimelineMetric(timeline, chart);
-    }
+    applyReplayColorPlayers(timeline, result.players, gameId, routeToken);
   });
 }
 
