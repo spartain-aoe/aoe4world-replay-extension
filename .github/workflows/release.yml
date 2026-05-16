@@ -2,6 +2,8 @@ name: Build Release
 
 on:
   push:
+    branches:
+      - api-summary-charts
     tags:
       - 'v*'
 
@@ -19,7 +21,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
+          REF_NAME: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
 
@@ -27,11 +30,12 @@ jobs:
             run_id="$(gh run list \
               --repo "$REPO" \
               --workflow "CI" \
-              --branch "$TAG" \
+              --branch "$REF_NAME" \
               --event push \
-              --limit 1 \
-              --json databaseId \
-              --jq '.[0].databaseId // ""')"
+              --limit 10 \
+              --json databaseId,headSha \
+              --jq ".[] | select(.headSha == \"$SHA\") | .databaseId" \
+              | head -n 1)"
 
             if [ -n "$run_id" ]; then
               gh run watch "$run_id" --repo "$REPO" --exit-status
@@ -41,13 +45,14 @@ jobs:
             sleep 10
           done
 
-          echo "Timed out waiting for CI run for tag $TAG" >&2
+          echo "Timed out waiting for CI run for $REF_NAME at $SHA" >&2
           exit 1
 
   extension:
     name: Chrome Extension
     runs-on: ubuntu-latest
     needs: wait-for-ci
+    if: startsWith(github.ref, 'refs/tags/v') || contains(github.event.head_commit.message, '[publish-chrome]')
     steps:
       - uses: actions/checkout@v4
 
@@ -73,6 +78,7 @@ jobs:
         run: cd chrome-extension && zip -r ../chrome-extension-store.zip .
 
       - name: Create GitHub Release — Extension
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: chrome-extension-store.zip
@@ -92,6 +98,7 @@ jobs:
     name: Native Replay Launcher
     runs-on: ubuntu-latest
     needs: wait-for-ci
+    if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v4
 
