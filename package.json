@@ -1,0 +1,32 @@
+{
+  "name": "aoe4-replay-share-api-charts",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:data": "node build/build-pbgid-map.mjs",
+    "build:data:strict": "node build/build-pbgid-map.mjs --strict",
+    "build:content": "node build/build-content.mjs",
+    "build": "npm run build:data && npm run build:content",
+    "dev": "node build/build-content.mjs --watch",
+    "pack": "npm run build && cd chrome-extension && npx bestzip ../chrome-extension-store.zip .",
+    "test:fixtures": "node --experimental-strip-types tests/check-fixtures.mjs",
+    "test:adversarial": "node --experimental-strip-types tests/check-adversarial.mjs",
+    "test:unit": "node --experimental-strip-types --test \"tests/unit/*.test.mjs\"",
+    "test:regression": "node --experimental-strip-types --test \"tests/regression/*.test.mjs\"",
+    "test": "npm run test:fixtures && npm run test:adversarial && npm run build:content && node --experimental-strip-types --test \"tests/unit/*.test.mjs\" \"tests/regression/*.test.mjs\"",
+    "coverage": "node --experimental-strip-types --experimental-test-coverage --test-coverage-include=\"src/**\" --test \"tests/unit/*.test.mjs\" \"tests/regression/*.test.mjs\"",
+    "pretest:integration": "playwright install chromium",
+    "test:integration": "npm run build:content && node tests/integration/extension.test.cjs && node tests/integration/injected-chart-animation.test.cjs && node tests/integration/macedonian-silver.test.cjs && node tests/integration/army-icons.test.cjs && node tests/integration/uncached-colors-fallback.test.cjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.1.42",
+    "esbuild": "^0.28.0",
+    "linkedom": "^0.18.12",
+    "playwright": "^1.60.0",
+    "typescript": "^6.0.3"
+  }
+}
