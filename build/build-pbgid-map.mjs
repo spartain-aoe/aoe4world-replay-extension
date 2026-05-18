@@ -7,7 +7,7 @@
 // (215 unit families, ~980 unit pbgids, ~84KB; 449 tech families, ~1700 tech
 // pbgids, ~85KB). One file per type fetched at build time, slimmed to only
 // the keys the extension consumes (n=display name, k=family id / merge key,
-// i=canonical CDN icon URL).
+// i=canonical CDN icon URL, u=unit cost total when available).
 //
 // Run: `node build/build-pbgid-map.mjs`. CI does this before zipping the
 // extension so every release ships fresh data. On upstream fetch failure
@@ -200,6 +200,15 @@ function deriveBaseFromFamilyId(famId, unitFamilyIdSet) {
   return singularizeUnitId(stripped, unitFamilyIdSet);
 }
 
+function costTotal(costs) {
+  const total = Number(costs?.total);
+  if (Number.isFinite(total) && total > 0) return total;
+  if (!costs || typeof costs !== 'object') return null;
+  const summed = ['food', 'wood', 'gold', 'stone', 'oliveoil', 'silver', 'vizier']
+    .reduce((sum, key) => sum + (Number(costs[key]) || 0), 0);
+  return summed > 0 ? summed : null;
+}
+
 function slimFamilies(json, opts = {}) {
   const {
     nameSource = 'family',
@@ -219,6 +228,8 @@ function slimFamilies(json, opts = {}) {
       k: fam.id || (fam.name || '').toLowerCase().replace(/\s+/g, '-'),
       i: fam.icon || '',
     };
+    const familyCost = costTotal(fam.costs);
+    if (nameSource === 'family' && familyCost) familyEntry.u = familyCost;
     // Pre-compute base unit id for upgrade families (same for all variations).
     let familyBaseUnit = null;
     if (nameSource === 'variation' && unitFamilyIdSet) {
@@ -251,6 +262,12 @@ function slimFamilies(json, opts = {}) {
             i: fam.icon || familyEntry.i,
           };
           if (baseUnit) entry.b = baseUnit;
+        }
+        if (nameSource === 'family') {
+          const variationCost = costTotal(v.costs);
+          if (variationCost && variationCost !== familyCost) {
+            entry = { ...entry, u: variationCost };
+          }
         }
         const existing = out[v.pbgid];
         if (existing && existing !== entry) {

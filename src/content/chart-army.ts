@@ -11,6 +11,10 @@ import {
   lookupUnitDataForIcon,
 } from './unit-data-cache.ts';
 import {
+  pbgidUnitsMap,
+  resolveUnitByPbgid,
+} from './pbgid-map.ts';
+import {
   numericArray,
   buildSampleLabels,
   SUMMARY_PLUS_PREFIX,
@@ -134,9 +138,12 @@ export function buildArmyValueLeadCharts(summary: GameSummary, nativeColors: Nat
 
 export function buildDestroyedValueCharts(summary: GameSummary, nativeColors: NativeColors, nativePlayerOrder: string[] = []): Chart[] {
   const players: PlayerSummary[] = Array.isArray(summary.players) ? summary.players : [];
-  // Avoid partial values before cost data finishes loading.
+  // Avoid partial values before either bundled PBGID costs or legacy per-civ
+  // unit-cost cache finishes loading.
   const slugs = players.map(civDataSlugForPlayer).filter((slug): slug is string => Boolean(slug));
-  if (slugs.length === 0 || !slugs.every(s => unitDataLoaded.has(s))) return [];
+  const hasUnitDataCosts = slugs.length > 0 && slugs.every(s => unitDataLoaded.has(s));
+  const hasBundledCosts = pbgidUnitsMap.size > 0;
+  if (!hasBundledCosts && !hasUnitDataCosts) return [];
   const lastResTime = lastResourceTimestamp(players);
   const gameDuration = lastResTime || summary.duration || 0;
   const labels = buildSampleLabels(gameDuration, 10);
@@ -158,7 +165,9 @@ export function buildDestroyedValueCharts(summary: GameSummary, nativeColors: Na
     const sign = player.team == null ? 1 : (teamSigns.get(player.team) ?? 1);
     for (const item of (player.buildOrder || [])) {
       if (item.type !== 'Unit') continue;
-      const unitData = lookupUnitDataByPbgid(item.pbgid, player) || lookupUnitDataForIcon(item.icon, player);
+      const unitData = lookupUnitDataByPbgid(item.pbgid, player)
+        || lookupUnitDataForIcon(item.icon, player)
+        || resolveUnitByPbgid(item.pbgid);
       const cost = unitCostTotal(unitData);
       if (!cost) continue;
       for (const time of numericArray(item.destroyed)) {
@@ -170,6 +179,7 @@ export function buildDestroyedValueCharts(summary: GameSummary, nativeColors: Na
 
   posDestroyedEvents.sort((a, b) => a.time - b.time);
   negDestroyedEvents.sort((a, b) => a.time - b.time);
+  if (!posDestroyedEvents.length && !negDestroyedEvents.length) return [];
 
   const cumulativeAtLabels = (events: DestroyedEvent[]): number[] => {
     let eventIndex = 0;

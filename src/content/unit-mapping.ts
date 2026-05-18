@@ -26,12 +26,16 @@ export function isArmyUnit(item: BuildOrderItem): boolean {
   return !EXCLUDED_ARMY_UNITS.some(excluded => unit.includes(excluded));
 }
 
-export function unitCostTotal(unitData: UnitDataEntry | null | undefined): number {
+type UnitCostSource = Pick<UnitDataEntry, 'costs'> & { u?: number };
+
+export function unitCostTotal(unitData: UnitCostSource | null | undefined): number {
   const total = Number(unitData?.costs?.total);
   if (Number.isFinite(total) && total > 0) return total;
+  const bundledTotal = Number(unitData?.u);
+  if (Number.isFinite(bundledTotal) && bundledTotal > 0) return bundledTotal;
   const costs = unitData?.costs;
   if (!costs || typeof costs !== 'object') return 0;
-  return ['food', 'wood', 'gold', 'stone', 'vizier', 'oliveOil']
+  return ['food', 'wood', 'gold', 'stone', 'vizier', 'oliveOil', 'oliveoil', 'silver']
     .reduce((sum, key) => sum + (Number(costs[key]) || 0), 0);
 }
 
