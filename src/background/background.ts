@@ -152,7 +152,7 @@ const dbg = (...args: unknown[]): void => { if (SETTINGS.debugLogs)
 const dbgWarn = (...args: unknown[]): void => { if (SETTINGS.debugLogs)
     console.warn(...args); };
 const REPLAY_API = 'https://aoe-api.worldsedgelink.com/community/leaderboard/getReplayFiles';
-const UA = 'AoE4ReplayLauncher-ChromeExt/1.0 (https://github.com/spartain-aoe/aoe4world-replay-extension, discord:591850595498065931)';
+const UA = 'AoE4ReplayLauncher-ChromeExt/1.0.1 (https://github.com/spartain-aoe/aoe4world-replay-extension, discord:591850595498065931)';
 async function parseReplayApiJson(response: Response, what = 'replay API'): Promise<ReplayApiResponse> {
     if (response.status === 429) {
         recordBackoff(what);
