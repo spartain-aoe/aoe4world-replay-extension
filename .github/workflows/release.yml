@@ -53,15 +53,34 @@ jobs:
           publish: true
 
   launcher:
-    name: Native Replay Launcher
+    name: Native Replay Launchers
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Pack native host installer zip
-        run: cd native-host && zip -r ../aoe4-replay-launcher.zip .
+      - name: Pack Steam native host installer zip
+        run: |
+          mkdir -p dist/native-host-steam
+          cp native-host/aoe4_replay_setup.ps1 dist/native-host-steam/
+          cp native-host/install.bat dist/native-host-steam/
+          cp native-host/install-steam.bat dist/native-host-steam/
+          cp native-host/uninstall.bat dist/native-host-steam/
+          cd dist/native-host-steam
+          zip -r ../../aoe4-replay-launcher-steam.zip .
+
+      - name: Pack Microsoft Store / Xbox native host installer zip
+        run: |
+          mkdir -p dist/native-host-microsoft-store
+          cp native-host/aoe4_replay_setup.ps1 dist/native-host-microsoft-store/
+          cp native-host/install-microsoft-store.bat dist/native-host-microsoft-store/install.bat
+          cp native-host/install-microsoft-store.bat dist/native-host-microsoft-store/
+          cp native-host/uninstall.bat dist/native-host-microsoft-store/
+          cd dist/native-host-microsoft-store
+          zip -r ../../aoe4-replay-launcher-microsoft-store.zip .
 
       - name: Create GitHub Release — Launcher
         uses: softprops/action-gh-release@v2
         with:
-          files: aoe4-replay-launcher.zip
+          files: |
+            aoe4-replay-launcher-steam.zip
+            aoe4-replay-launcher-microsoft-store.zip

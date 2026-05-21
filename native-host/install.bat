@@ -4,7 +4,7 @@
 :: =============================================================
 ::
 :: Usage:
-::   install.bat           - Install the native host
+::   install.bat           - Install the Steam native host
 ::   install.bat uninstall - Remove everything
 ::
 :: Source: https://github.com/spartain-aoe/aoe4world-replay-extension
@@ -13,8 +13,8 @@
 if "%1"=="uninstall" goto :uninstall
 
 echo.
-echo  AoE4 Replay Launcher - Installer
-echo  =================================
+echo  AoE4 Replay Launcher - Steam Installer
+echo  ======================================
 echo.
 
 set "DIR=%~dp0"
@@ -26,12 +26,12 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-echo  Installing to %%LOCALAPPDATA%%\AoE4ReplayLauncher ...
+echo  Installing Steam launcher to %%LOCALAPPDATA%%\AoE4ReplayLauncher ...
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "& '%DIR%aoe4_replay_setup.ps1' -ExtensionId 'ckkbdeejodfnpehhllhmhhannpgojfec'"
+  "& '%DIR%aoe4_replay_setup.ps1' -ExtensionId 'ckkbdeejodfnpehhllhmhhannpgojfec' -Launcher Steam"
 
 echo.
-echo  Done! You can now use "Watch Replay" on aoe4world.com.
+echo  Done! You can now use "Watch Replay" on aoe4world.com with the Steam version of AoE4.
 echo  To uninstall later, run: install.bat uninstall
 echo.
 pause

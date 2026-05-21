@@ -6,7 +6,7 @@ Watch any AoE4 ranked game replay directly from [aoe4world.com](https://aoe4worl
 
 ## Features
 
-- **One-click replay launching** from any game on aoe4world.com
+- **Replay launching/downloading** from any game on aoe4world.com, with separate Steam and Microsoft Store/Xbox native launchers
 - **Save replays** — star games to keep them locally for offline viewing
 - **Custom charts** — army composition, resource gathered, army value lead charts on game summary pages (opt-in)
 - **In-game player colors** — recolors aoe4world's default swatches with actual replay colors (opt-in)
@@ -29,10 +29,14 @@ Or load manually:
 
 ### 2. Install the native host (for replay launching)
 
-1. Download `aoe4-replay-launcher.zip` from [Releases](https://github.com/spartain-aoe/aoe4world-replay-extension/releases/latest)
+1. Download the launcher that matches your AoE4 install from [Releases](https://github.com/spartain-aoe/aoe4world-replay-extension/releases/latest):
+   - `aoe4-replay-launcher-steam.zip` for Steam installs
+   - `aoe4-replay-launcher-microsoft-store.zip` for Microsoft Store, Xbox app, or Game Pass installs
 2. Extract it anywhere
 3. Run `install.bat`
 4. Files are installed to `%LOCALAPPDATA%\AoE4ReplayLauncher`
+
+The Steam launcher opens AoE4 directly into the downloaded replay. The Microsoft Store / Xbox launcher saves the replay to AoE4's playback folder and launches AoE4 when Windows exposes the app; if packaged-app launch arguments are unavailable, open the replay from the in-game Replays menu.
 
 ### 3. Enable features
 
@@ -80,7 +84,7 @@ native-host/       # replay launcher installer (PowerShell)
 ## Requirements
 
 - Windows
-- Age of Empires IV installed via Steam
+- Age of Empires IV installed via Steam, Microsoft Store, Xbox app, or Game Pass
 - PowerShell 5.1+
 - Chrome or Edge
 

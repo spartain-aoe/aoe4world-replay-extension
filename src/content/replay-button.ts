@@ -7,6 +7,7 @@ interface LaunchReplayResponse {
   needsInstall?: boolean;
   success?: boolean;
   error?: string;
+  message?: string;
 }
 
 type LoadingDiv = HTMLDivElement & {
@@ -41,6 +42,10 @@ function getGameIdFromRow(row: HTMLElement): string | null {
   return row.dataset?.gameId || null;
 }
 
+function successLabel(resp: LaunchReplayResponse | undefined): string {
+  return resp?.message?.startsWith('Replay saved') ? 'Replay saved!' : 'Launched!';
+}
+
 function createReplayDiv(gameId: string, prevPatch = false): HTMLDivElement {
   const div = document.createElement('div');
   div.className = 'aoe4-replay-btn text-gray-200 mt-0';
@@ -53,7 +58,7 @@ function createReplayDiv(gameId: string, prevPatch = false): HTMLDivElement {
 
   if (prevPatch) {
     link.title = 'Download and launch this replay in AoE4';
-    link.innerHTML = 'Watch Replay <i class="fas fa-play text-xs ml-1 text-green-500" aria-hidden="true"></i> <span class="aoe4-patch-warn" title="This replay is from a previous patch. To watch it, switch to the older branch in Steam: right-click AoE4 → Properties → Betas → select the previous version." style="cursor:help;color:#ffd43b;margin-left:4px;">&#9888;</span>';
+    link.innerHTML = 'Watch Replay <i class="fas fa-play text-xs ml-1 text-green-500" aria-hidden="true"></i> <span class="aoe4-patch-warn" title="This replay is from a previous patch. You may need the matching game version; Steam can switch versions from Properties → Betas, while Microsoft Store/Xbox installs may not support older replay versions." style="cursor:help;color:#ffd43b;margin-left:4px;">&#9888;</span>';
   } else {
     link.title = 'Download and launch this replay in AoE4';
     link.innerHTML = 'Watch Replay <i class="fas fa-play text-xs ml-1 text-green-500" aria-hidden="true"></i>';
@@ -89,10 +94,12 @@ function handleWatchClick(gameId: string, link: HTMLElement): (e: MouseEvent) =>
             link.style.pointerEvents = 'none';
             chrome.runtime.sendMessage({ type: 'launchReplay', matchId: gameId }, (resp2: LaunchReplayResponse | undefined) => {
               if (resp2?.success) {
-                link.innerHTML = 'Launched! <i class="fas fa-check text-xs ml-1 text-green-500"></i>';
+                link.textContent = successLabel(resp2);
+                link.title = resp2.message || 'Replay launched in AoE4';
                 link.className = 'hover:underline hover:text-white';
                 setTimeout(() => {
                   link.innerHTML = 'Watch Replay <i class="fas fa-play text-xs ml-1 text-green-500" aria-hidden="true"></i>';
+                  link.title = 'Download and launch this replay in AoE4';
                   link.style.pointerEvents = '';
                 }, 5000);
               } else {
@@ -104,10 +111,12 @@ function handleWatchClick(gameId: string, link: HTMLElement): (e: MouseEvent) =>
           };
         };
       } else if (resp?.success) {
-        link.innerHTML = 'Launched! <i class="fas fa-check text-xs ml-1 text-green-500"></i>';
+        link.textContent = successLabel(resp);
+        link.title = resp.message || 'Replay launched in AoE4';
         link.className = 'hover:underline hover:text-white';
         setTimeout(() => {
           link.innerHTML = 'Watch Replay <i class="fas fa-play text-xs ml-1 text-green-500" aria-hidden="true"></i>';
+          link.title = 'Download and launch this replay in AoE4';
           link.style.pointerEvents = '';
         }, 5000);
       } else {
