@@ -42,6 +42,7 @@ $hostScript = @'
 $REPLAY_API = 'https://aoe-api.worldsedgelink.com/community/leaderboard/getReplayFiles'
 $UA = 'AoE4ReplayLauncher/0.4 (https://github.com/spartain-aoe/aoe4world-replay-extension, discord:591850595498065931)'
 $AOE4_STEAM_ID = '1466860'
+$AOE4_EXE_NAMES = @('RelicCardinal_ws.exe', 'RelicCardinal.exe')
 $LAUNCHER = '__LAUNCHER__'
 $docsDir = [Environment]::GetFolderPath('MyDocuments')
 $playbackDir = Join-Path $docsDir 'My Games\Age of Empires IV\playback'
@@ -149,17 +150,102 @@ function Get-AoE4StartApp {
     return $apps | Select-Object -First 1
 }
 
-function Launch-MicrosoftStoreGame($replayName) {
-    Stop-RunningAoE4
-    $app = Get-AoE4StartApp
-    if ($app) {
-        Start-Process "shell:AppsFolder\$($app.AppID)"
-        return @{
-            message = 'Replay saved and AoE4 launched. Microsoft Store/Xbox installs may need you to open the replay from the in-game Replays menu.'
+function Find-ExecutableInRoot($root) {
+    if (-not $root -or -not (Test-Path $root)) { return $null }
+    foreach ($name in $AOE4_EXE_NAMES) {
+        $direct = Join-Path $root $name
+        if (Test-Path $direct) { return $direct }
+    }
+    foreach ($name in $AOE4_EXE_NAMES) {
+        $hit = Get-ChildItem -Path $root -Filter $name -File -Recurse -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+        if ($hit) { return $hit.FullName }
+    }
+    return $null
+}
+
+function Find-AoE4Executable {
+    $roots = New-Object System.Collections.ArrayList
+    $seen = @{}
+    function Add-Root($path) {
+        if (-not $path) { return }
+        try {
+            $resolved = [System.IO.Path]::GetFullPath($path)
+        } catch {
+            return
+        }
+        if (-not (Test-Path $resolved) -or $seen.ContainsKey($resolved)) { return }
+        $seen[$resolved] = $true
+        [void]$roots.Add($resolved)
+    }
+
+    try {
+        $startApp = Get-AoE4StartApp
+        if ($startApp -and $startApp.AppID -match '^([^!]+)!') {
+            $familyName = $Matches[1]
+            $pkg = Get-AppxPackage | Where-Object { $_.PackageFamilyName -eq $familyName } | Select-Object -First 1
+            if ($pkg) { Add-Root $pkg.InstallLocation }
+        }
+    } catch {}
+
+    try {
+        Get-AppxPackage | Where-Object {
+            $_.Name -match 'Cardinal|Age.*Empires' -or
+            $_.PackageFullName -match 'Cardinal|Age.*Empires' -or
+            $_.PackageFamilyName -match 'Cardinal|Age.*Empires'
+        } | ForEach-Object { Add-Root $_.InstallLocation }
+    } catch {}
+
+    foreach ($regRoot in @(
+        'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
+        'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
+        'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
+    )) {
+        try {
+            Get-ItemProperty $regRoot -ErrorAction SilentlyContinue |
+                Where-Object { $_.DisplayName -match 'Age of Empires IV|Age of Empires 4|AoE4' } |
+                ForEach-Object {
+                    Add-Root $_.InstallLocation
+                    if ($_.DisplayIcon) { Add-Root (Split-Path $_.DisplayIcon -Parent) }
+                }
+        } catch {}
+    }
+
+    $driveRoots = Get-PSDrive -PSProvider FileSystem | ForEach-Object { $_.Root }
+    foreach ($driveRoot in $driveRoots) {
+        foreach ($parent in @(
+            (Join-Path $driveRoot 'XboxGames'),
+            (Join-Path $driveRoot 'Program Files\ModifiableWindowsApps'),
+            (Join-Path $driveRoot 'Program Files\WindowsApps')
+        )) {
+            if (-not (Test-Path $parent)) { continue }
+            try {
+                Get-ChildItem -Path $parent -Directory -ErrorAction SilentlyContinue |
+                    Where-Object { $_.Name -match 'Age.*Empires|AoE4|Cardinal' } |
+                    ForEach-Object {
+                        Add-Root $_.FullName
+                        Add-Root (Join-Path $_.FullName 'Content')
+                    }
+            } catch {}
         }
     }
+
+    foreach ($root in $roots) {
+        $exe = Find-ExecutableInRoot $root
+        if ($exe) { return $exe }
+    }
+    return $null
+}
+
+function Launch-MicrosoftStoreGame($replayName) {
+    Stop-RunningAoE4
+    $exe = Find-AoE4Executable
+    if (-not $exe) {
+        throw 'Could not find the Microsoft Store/Xbox AoE4 executable. The launcher needs an accessible RelicCardinal executable so it can pass replay command-line arguments.'
+    }
+    Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe -Parent) -ArgumentList @('-dev', '-replay', "playback:$replayName")
     return @{
-        message = 'Replay saved. Could not find the Microsoft Store/Xbox AoE4 app automatically; open AoE4 and load the replay from the in-game Replays menu.'
+        message = 'Launched replay in AoE4 via Microsoft Store/Xbox executable.'
     }
 }
 

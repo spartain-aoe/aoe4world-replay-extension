@@ -32,7 +32,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
 
 echo.
 echo  Done! You can now use "Watch Replay" on aoe4world.com with the Microsoft Store, Xbox app, or Game Pass version of AoE4.
-echo  Note: packaged installs may launch AoE4 normally after saving the replay; open the replay from the in-game Replays menu if it does not auto-play.
+echo  The launcher will find the packaged RelicCardinal executable and pass AoE4 replay command-line arguments.
 echo  To uninstall later, run: install-microsoft-store.bat uninstall
 echo.
 pause

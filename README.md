@@ -36,7 +36,7 @@ Or load manually:
 3. Run `install.bat`
 4. Files are installed to `%LOCALAPPDATA%\AoE4ReplayLauncher`
 
-The Steam launcher opens AoE4 directly into the downloaded replay. The Microsoft Store / Xbox launcher saves the replay to AoE4's playback folder and launches AoE4 when Windows exposes the app; if packaged-app launch arguments are unavailable, open the replay from the in-game Replays menu.
+Both launchers save the replay to AoE4's playback folder and launch AoE4 with `-dev -replay playback:<replay>`. The Microsoft Store / Xbox launcher looks for an accessible `RelicCardinal` executable from the packaged install so it can pass those replay command-line arguments.
 
 ### 3. Enable features
 
