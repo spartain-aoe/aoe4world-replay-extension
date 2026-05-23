@@ -57,6 +57,13 @@ interface UnitDataCacheEntry {
     failedAt?: number;
     error?: string;
 }
+interface StatsMetricsCacheEntry {
+    players?: StatsPlayerMetric[];
+    savedAt?: number;
+    failedAt?: number;
+    error?: string;
+    softFailure?: boolean;
+}
 interface CheckReplaysMessage {
     type: 'checkReplays';
     gameIds: Array<string | number>;
@@ -193,6 +200,7 @@ const MAX_FAVORITES = 10;
 const COLORS_CACHE_KEY_PREFIX = 'colors_v5_';
 const STATS_METRICS_CACHE_KEY_PREFIX = 'stats_metrics_v1_';
 const COLORS_CACHE_LIMIT = 50;
+const STATS_METRICS_CACHE_LIMIT = 50;
 const COLORS_NEGATIVE_TTL_MS = 60 * 60 * 1000;
 const COLORS_SOFT_FAILURE_TTL_MS = 10 * 60 * 1000;
 const inFlightColorRequests = new Map<string, Promise<GetPlayerColorsResponse>>();
@@ -574,10 +582,16 @@ export interface GetPlayerColorsOptions {
 }
 export async function handleGetStatsMetrics(matchId: string): Promise<GetStatsMetricsResponse> {
     const cacheKey = STATS_METRICS_CACHE_KEY_PREFIX + matchId;
-    const cached = await chrome.storage.local.get(cacheKey) as Record<string, { players?: StatsPlayerMetric[]; savedAt?: number; failedAt?: number; error?: string } | undefined>;
+    const cached = await chrome.storage.local.get(cacheKey) as Record<string, StatsMetricsCacheEntry | undefined>;
     const entry = cached[cacheKey];
     if (Array.isArray(entry?.players)) {
         return { success: true, players: entry.players, cached: true };
+    }
+    if (entry?.failedAt) {
+        const ttl = entry.softFailure ? COLORS_SOFT_FAILURE_TTL_MS : COLORS_NEGATIVE_TTL_MS;
+        if (Date.now() - entry.failedAt < ttl) {
+            return { success: false, error: entry.error || 'cached_failure', cached: true };
+        }
     }
     if (inFlightStatsRequests.has(matchId)) {
         return inFlightStatsRequests.get(matchId)!;
@@ -588,11 +602,24 @@ export async function handleGetStatsMetrics(matchId: string): Promise<GetStatsMe
                 return { success: false, error: 'rate_limited', rateLimited: true };
             }
             const players = await fetchAndParseStatsMetrics(matchId);
-            await chrome.storage.local.set({ [cacheKey]: { players, savedAt: Date.now() } });
+            await storeStatsMetricsEntry(cacheKey, { players, savedAt: Date.now() });
             return { success: true, players, cached: false };
         }
         catch (err) {
             const message = (err as { message?: string })?.message || String(err);
+            if (message === 'rate_limited') {
+                return { success: false, error: 'rate_limited', rateLimited: true };
+            }
+            if (isPermanentStatsFailure(message)) {
+                await storeStatsMetricsEntry(cacheKey, { failedAt: Date.now(), error: message });
+            }
+            else if (isSoftFailure(message)) {
+                await storeStatsMetricsEntry(cacheKey, {
+                    failedAt: Date.now(),
+                    error: message,
+                    softFailure: true,
+                });
+            }
             return { success: false, error: message };
         }
     })();
@@ -669,6 +696,15 @@ export function isPermanentFailure(message: string | null | undefined): boolean 
     if (/^replay_api_4\d\d$/.test(message))
         return true;
     return false;
+}
+export function isPermanentStatsFailure(message: string | null | undefined): boolean {
+    if (!message)
+        return false;
+    if (message === 'no_stats_file')
+        return true;
+    if (message.startsWith('stats_parse_'))
+        return true;
+    return isPermanentFailure(message);
 }
 export function isSoftFailure(message: string | null | undefined): boolean {
     if (!message)
@@ -895,6 +931,10 @@ async function storeColorEntry(cacheKey: string, value: ColorCacheEntry): Promis
     await chrome.storage.local.set({ [cacheKey]: value });
     await pruneColorCache();
 }
+async function storeStatsMetricsEntry(cacheKey: string, value: StatsMetricsCacheEntry): Promise<void> {
+    await chrome.storage.local.set({ [cacheKey]: value });
+    await pruneStatsMetricsCache();
+}
 async function pruneColorCache(): Promise<void> {
     const all = await chrome.storage.local.get(null) as StorageItems;
     const entries: Array<{
@@ -912,6 +952,26 @@ async function pruneColorCache(): Promise<void> {
         return;
     entries.sort((a, b) => a.ts - b.ts);
     const toRemove = entries.slice(0, entries.length - COLORS_CACHE_LIMIT).map(e => e.key);
+    if (toRemove.length)
+        await chrome.storage.local.remove(toRemove);
+}
+async function pruneStatsMetricsCache(): Promise<void> {
+    const all = await chrome.storage.local.get(null) as StorageItems;
+    const entries: Array<{
+        key: string;
+        ts: number;
+    }> = [];
+    for (const [key, value] of Object.entries(all)) {
+        if (!key.startsWith(STATS_METRICS_CACHE_KEY_PREFIX))
+            continue;
+        const cacheValue = value as StatsMetricsCacheEntry;
+        const ts = cacheValue.savedAt ?? cacheValue.failedAt ?? 0;
+        entries.push({ key, ts });
+    }
+    if (entries.length <= STATS_METRICS_CACHE_LIMIT)
+        return;
+    entries.sort((a, b) => a.ts - b.ts);
+    const toRemove = entries.slice(0, entries.length - STATS_METRICS_CACHE_LIMIT).map(e => e.key);
     if (toRemove.length)
         await chrome.storage.local.remove(toRemove);
 }
