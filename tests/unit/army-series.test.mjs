@@ -66,7 +66,7 @@ describe('buildArmySeriesForPlayer', () => {
     assert.equal(archerSeries[0].createdTotal, 2);
   });
 
-  test('uses shared raw entity id to merge unresolved civ variants into canonical unit', () => {
+  test('merges Jin biome variants (Horse Archer / Mohe Tribesman) into one Mohe Tribesman series', () => {
     const previousAge2 = pbgidUnitsMap.get(9004188);
     const previousAge3 = pbgidUnitsMap.get(9004189);
     const previousHorseArcher = pbgidUnitsMap.get(133493);
@@ -95,7 +95,7 @@ describe('buildArmySeriesForPlayer', () => {
           { id: '11270955', type: 'Unit', icon: 'icons/races/jin/units/grassland/horse_archer_grassland_2', pbgid: 9004188, finished: [30], destroyed: [] },
           { id: '11270956', type: 'Unit', icon: 'icons/races/jin/units/horse_archer_3', pbgid: 9003973, finished: [40], destroyed: [70] },
           { id: '11270956', type: 'Unit', icon: 'icons/races/jin/units/grassland/horse_archer_grassland_3', pbgid: 9004189, finished: [50], destroyed: [] },
-          { id: 'unrelated-grassland', type: 'Unit', icon: 'icons/races/jin/units/grassland/horse_archer_grassland_2', pbgid: 9003972, finished: [55], destroyed: [] },
+          { id: 'extra-grassland', type: 'Unit', icon: 'icons/races/jin/units/grassland/horse_archer_grassland_2', pbgid: 9003972, finished: [55], destroyed: [] },
           { id: 'unrelated', type: 'Unit', icon: 'icons/races/rus/units/horse_archer_3', pbgid: 133493, finished: [60], destroyed: [] },
         ],
       };
@@ -103,16 +103,14 @@ describe('buildArmySeriesForPlayer', () => {
       const result = buildArmySeriesForPlayer(player, [0, 20, 40, 60, 80], '#4dabf7');
       const mohe = result.find(s => s.mergeKey === 'mohe-tribesman');
       const horseArcher = result.find(s => s.mergeKey === 'horse-archer');
-      const unresolvedGrassland = result.find(s => s.mergeKey === 'horse_archer_grassland');
 
       assert.ok(mohe, 'Mohe Tribesman series should exist');
-      assert.ok(horseArcher, 'unrelated Horse Archer entity should remain separate');
-      assert.ok(unresolvedGrassland, 'unrelated unresolved grassland Horse Archer entity should remain separate');
+      assert.ok(horseArcher, 'unrelated Rus Horse Archer entity should remain separate');
       assert.equal(mohe.label, 'Mohe Tribesman');
-      assert.equal(mohe.createdTotal, 5);
-      assert.deepEqual([...mohe.values], [0, 2, 4, 5, 4]);
+      // All 5 Jin items (9003972/3 + 9004188/9 + extra-grassland) collapse into Mohe Tribesman:
+      assert.equal(mohe.createdTotal, 6);
+      assert.deepEqual([...mohe.values], [0, 2, 4, 6, 5]);
       assert.equal(horseArcher.createdTotal, 1);
-      assert.equal(unresolvedGrassland.createdTotal, 1);
       assert.equal(mohe.iconCandidates[0], 'https://data.aoe4world.com/images/units/mohe-tribesman-2.png');
     } finally {
       if (previousAge2) pbgidUnitsMap.set(9004188, previousAge2);

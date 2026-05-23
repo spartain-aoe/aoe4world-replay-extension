@@ -42,6 +42,12 @@ export const pbgidUnitOverridesMap: Map<number, PbgidEntry> = new Map([
   [9004188, unit('Mohe Tribesman', 'mohe-tribesman', 'mohe-tribesman-2')],
   [9004189, unit('Mohe Tribesman', 'mohe-tribesman', 'mohe-tribesman-3')],
   [9004190, unit('Mohe Tribesman', 'mohe-tribesman', 'mohe-tribesman-4')],
+  // Jin "Horse Archer" is just the non-grassland name for Mohe Tribesman —
+  // map both age-tier PBGIDs to the same family so the army series stays
+  // labeled "Mohe Tribesman" with its mohe icon.
+  [9003972, unit('Mohe Tribesman', 'mohe-tribesman', 'mohe-tribesman-2')],
+  [9003973, unit('Mohe Tribesman', 'mohe-tribesman', 'mohe-tribesman-3')],
+  [9003974, unit('Mohe Tribesman', 'mohe-tribesman', 'mohe-tribesman-4')],
   [9004731, unit('Iron Pagoda', 'iron-pagoda', 'iron-pagoda-2')],
   [9003926, unit('Iron Pagoda', 'iron-pagoda', 'iron-pagoda-3')],
   [9003927, unit('Iron Pagoda', 'iron-pagoda', 'iron-pagoda-4')],
@@ -115,9 +121,6 @@ export const pbgidUnitOverridesMap: Map<number, PbgidEntry> = new Map([
   [9000987, unit('Cheirosiphon', 'cheirosiphon', 'cheirosiphon-3')], // x17 chierosiphon [macedonian_dynasty]
   [9001032, unit('Cheirosiphon', 'cheirosiphon', 'cheirosiphon-3')], // x17 chierosiphon [macedonian_dynasty]
   [133030, unit('Warrior Monk', 'warrior-monk', 'warrior-monk-3')], // x16 warrior_monk [rus]
-  // 9003972/3/4 Jin Horse Archer intentionally left unresolved: they share
-  // entity-ids with Mohe Tribesman in grassland biomes, and army-series
-  // entity-id merging needs them unresolved to merge into a single series.
   [9003923, unit('Horseman', 'horseman', 'horseman-3')], // x15 horseman_3 [jin_dynasty]
   [8999978, unit('Mangonel', 'mangonel', 'mangonel-3')], // x14 mangonel [knights_templar]
   [9004114, unit('Hippodrome Horseman', 'hippodrome-horseman', 'hippodrome-horseman-1')], // x13 hippodrome_horseman [macedonian_dynasty]
