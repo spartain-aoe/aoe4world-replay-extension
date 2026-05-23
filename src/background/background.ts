@@ -1,4 +1,5 @@
 import { extractPlayerColors, extractPlayerColorsStructural, setDebug as setParserDebug, type ExtractPlayerColorsResult, type PlayerColorInfo } from './replay-parser.ts';
+import { extractStatsPlayerMetrics, type StatsPlayerMetric } from './stats-parser.ts';
 interface Settings {
     parseGameData: boolean;
     recolorSwatches: boolean;
@@ -92,7 +93,11 @@ interface GetUnitDataMessage {
     type: 'getUnitData';
     civSlugs?: unknown[];
 }
-type BackgroundMessage = CheckReplaysMessage | LaunchReplayMessage | SaveFavoriteMessage | RemoveFavoriteMessage | GetFavoritesMessage | IsFavoriteMessage | GetCurrentPatchMessage | GetPlayerColorsMessage | GetUnitDataMessage;
+interface GetStatsMetricsMessage {
+    type: 'getStatsMetrics';
+    matchId: string | number;
+}
+type BackgroundMessage = CheckReplaysMessage | LaunchReplayMessage | SaveFavoriteMessage | RemoveFavoriteMessage | GetFavoritesMessage | IsFavoriteMessage | GetCurrentPatchMessage | GetPlayerColorsMessage | GetUnitDataMessage | GetStatsMetricsMessage;
 type ChromeMessageResponder = (response?: unknown) => void;
 type StorageItems = Record<string, unknown>;
 interface CheckReplaysResponse {
@@ -120,6 +125,17 @@ type GetUnitDataResponse = {
 } | {
     success: false;
     error: string;
+    disabled?: boolean;
+};
+type GetStatsMetricsResponse = {
+    success: true;
+    players: StatsPlayerMetric[];
+    cached: boolean;
+} | {
+    success: false;
+    error: string;
+    cached?: boolean;
+    rateLimited?: boolean;
     disabled?: boolean;
 };
 interface PlayerStringDiff {
@@ -175,10 +191,12 @@ async function parseReplayApiJson(response: Response, what = 'replay API'): Prom
 const NATIVE_HOST = 'com.aoe4.replay_launcher';
 const MAX_FAVORITES = 10;
 const COLORS_CACHE_KEY_PREFIX = 'colors_v5_';
+const STATS_METRICS_CACHE_KEY_PREFIX = 'stats_metrics_v1_';
 const COLORS_CACHE_LIMIT = 50;
 const COLORS_NEGATIVE_TTL_MS = 60 * 60 * 1000;
 const COLORS_SOFT_FAILURE_TTL_MS = 10 * 60 * 1000;
 const inFlightColorRequests = new Map<string, Promise<GetPlayerColorsResponse>>();
+const inFlightStatsRequests = new Map<string, Promise<GetStatsMetricsResponse>>();
 interface CachedReplayUrl { url: string; expiry: number; }
 const replayUrlCache = new Map<string, CachedReplayUrl>();
 const REPLAY_URL_CACHE_LIMIT = 50;
@@ -514,6 +532,25 @@ chrome.runtime.onMessage.addListener((msg: BackgroundMessage, sender: chrome.run
         });
         return true;
     }
+    if (msg.type === 'getStatsMetrics') {
+        const matchId = String(msg.matchId || '');
+        if (!matchId) {
+            sendResponse({ success: false, error: 'matchId required' });
+            return false;
+        }
+        settingsReady.then(() => {
+            if (!SETTINGS.parseGameData || !SETTINGS.injectCharts) {
+                sendResponse({ success: false, error: 'disabled', disabled: true });
+                return;
+            }
+            handleGetStatsMetrics(matchId)
+                .then(payload => sendResponse(payload))
+                .catch((error: unknown) => sendResponse({ success: false, error: (error as {
+                    message?: string;
+                })?.message || String(error) }));
+        });
+        return true;
+    }
 });
 const UNIT_DATA_CACHE_PREFIX = 'unit_data_v2_';
 async function handleGetUnitData(civSlugs: readonly unknown[]): Promise<GetUnitDataResponse> {
@@ -534,6 +571,38 @@ async function handleGetUnitData(civSlugs: readonly unknown[]): Promise<GetUnitD
 }
 export interface GetPlayerColorsOptions {
     profileId?: string | number | null;
+}
+export async function handleGetStatsMetrics(matchId: string): Promise<GetStatsMetricsResponse> {
+    const cacheKey = STATS_METRICS_CACHE_KEY_PREFIX + matchId;
+    const cached = await chrome.storage.local.get(cacheKey) as Record<string, { players?: StatsPlayerMetric[]; savedAt?: number; failedAt?: number; error?: string } | undefined>;
+    const entry = cached[cacheKey];
+    if (Array.isArray(entry?.players)) {
+        return { success: true, players: entry.players, cached: true };
+    }
+    if (inFlightStatsRequests.has(matchId)) {
+        return inFlightStatsRequests.get(matchId)!;
+    }
+    const inflight = (async (): Promise<GetStatsMetricsResponse> => {
+        try {
+            if (Date.now() < backoffUntil) {
+                return { success: false, error: 'rate_limited', rateLimited: true };
+            }
+            const players = await fetchAndParseStatsMetrics(matchId);
+            await chrome.storage.local.set({ [cacheKey]: { players, savedAt: Date.now() } });
+            return { success: true, players, cached: false };
+        }
+        catch (err) {
+            const message = (err as { message?: string })?.message || String(err);
+            return { success: false, error: message };
+        }
+    })();
+    inFlightStatsRequests.set(matchId, inflight);
+    try {
+        return await inflight;
+    }
+    finally {
+        inFlightStatsRequests.delete(matchId);
+    }
 }
 export async function handleGetPlayerColors(matchId: string, options: GetPlayerColorsOptions = {}): Promise<GetPlayerColorsResponse> {
     const cacheKey = COLORS_CACHE_KEY_PREFIX + matchId;
@@ -623,7 +692,7 @@ async function fetchAndParsePlayerColors(matchId: string): Promise<PlayerColorIn
     let replayUrl = (cached && Date.now() < cached.expiry) ? cached.url : null;
     replayUrlCache.delete(matchId);
     if (!replayUrl) {
-        replayUrl = await fetchReplayFileUrl(matchId);
+        replayUrl = await fetchReplayFileUrl(matchId, 0);
     }
     updatePatchFromUrl(replayUrl);
     const blobResponse = await fetch(replayUrl);
@@ -632,7 +701,14 @@ async function fetchAndParsePlayerColors(matchId: string): Promise<PlayerColorIn
     const arrayBuffer = await blobResponse.arrayBuffer();
     return parseReplayPlayersFromArrayBuffer(arrayBuffer, matchId);
 }
-async function fetchReplayFileUrl(matchId: string): Promise<string> {
+async function fetchAndParseStatsMetrics(matchId: string): Promise<StatsPlayerMetric[]> {
+    const statsUrl = await fetchReplayFileUrl(matchId, 1);
+    const blobResponse = await fetch(statsUrl);
+    if (!blobResponse.ok) throw new Error(`blob_fetch_${blobResponse.status}`);
+    const arrayBuffer = await blobResponse.arrayBuffer();
+    return extractStatsPlayerMetrics(arrayBuffer);
+}
+async function fetchReplayFileUrl(matchId: string, datatype: number): Promise<string> {
     const apiUrl = `${REPLAY_API}?matchIDs=[${matchId}]&title=age4`;
     const apiResponse = await fetch(apiUrl, { headers: { 'User-Agent': UA } });
     let data: ReplayApiResponse;
@@ -649,8 +725,8 @@ async function fetchReplayFileUrl(matchId: string): Promise<string> {
     if (data.result?.code !== 0 || !Array.isArray(data.replayFiles)) {
         throw new Error('replay_api_no_data');
     }
-    const replayFile = data.replayFiles.find((f: ReplayFile) => f.datatype === 0 && f.size > 0 && f.url);
-    if (!replayFile) throw new Error('no_replay_file');
+    const replayFile = data.replayFiles.find((f: ReplayFile) => f.datatype === datatype && f.size > 0 && f.url);
+    if (!replayFile) throw new Error(datatype === 0 ? 'no_replay_file' : 'no_stats_file');
     return replayFile.url as string;
 }
 async function parseReplayPlayersFromArrayBuffer(arrayBuffer: ArrayBuffer, matchId: string): Promise<PlayerColorInfo[]> {

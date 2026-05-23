@@ -43,6 +43,7 @@ import {
   attachTimelineHoverGuard,
   attachPlayerToggle,
 } from './interactions.ts';
+import { scheduleDetailsTableMetrics } from './details-metrics.ts';
 import type {
   AgeUp,
   Chart,
@@ -154,6 +155,7 @@ export function tryAddSummaryCharts(): void {
       if (timeline.root.dataset.aoe4SummaryPlusPendingUrl === url) {
         delete timeline.root.dataset.aoe4SummaryPlusPendingUrl;
       }
+      scheduleDetailsTableMetrics(summary, gameId);
       installTimelineMetrics(timeline, summary);
       ensureChartInjector();
       ensureReplayPlayerColors(timeline);

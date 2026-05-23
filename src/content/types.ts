@@ -50,9 +50,13 @@ export interface BuildOrderItem {
   icon: string;
   pbgid?: number;
   finished?: number[];
+  constructed?: number[];
   destroyed?: number[];
+  packed?: number[];
+  unpacked?: number[];
   transformed?: number[];
   count?: number;
+  [key: string]: unknown;
 }
 
 export interface PlayerSummary {
