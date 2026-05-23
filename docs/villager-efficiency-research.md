@@ -26,10 +26,3 @@ villagers can gather for long stretches without new commands, and the replay
 command stream does not directly record simulation-side transitions like
 resource depletion, auto-acquire, construction completion, or a villager
 becoming idle.
-
-## Future direction
-
-To implement Villager Efficiency accurately, use `STLS.createdEntities` and
-`STLS.lostEntities` to identify actual villager entity IDs and lifetimes, then
-build a real villager state machine from replay commands plus simulation
-inference. Do not treat command gaps alone as idle time.
