@@ -71,6 +71,23 @@ test('unitIconCandidates includes French lancer alias slugs', () => {
   assert.ok(candidates.some(c => c.includes('royal-knight-2.png')));
 });
 
+test('unitIconCandidates aliases ZGN/repeater crossbowman to Zhuge Nu icons', () => {
+  assert.ok(unitIconCandidates('icons/races/chinese/units/repeater_crossbowman_2', null, null, null)
+    .some(c => c.includes('/zhuge-nu-2.png')));
+  assert.ok(unitIconCandidates(null, 'ZGN', null, null)
+    .some(c => c.includes('/zhuge-nu-2.png')));
+});
+
+test('unitIconCandidates aliases Early Palace Guard to Palace Guard icons', () => {
+  const candidates = unitIconCandidates('icons/races/chinese/units/early_palace_guard_2', null, null, null);
+  assert.ok(candidates.some(c => c.includes('/palace-guard-2.png')));
+});
+
+test('unitIconCandidates aliases Ram to Battering Ram icons', () => {
+  const candidates = unitIconCandidates('icons/races/common/units/ram', null, null, null);
+  assert.ok(candidates.some(c => c.includes('/battering-ram-2.png')));
+});
+
 test('unitIconCandidates deduplicates entries', () => {
   const candidates = unitIconCandidates('units/archer', null, null, null);
   const unique = new Set(candidates);

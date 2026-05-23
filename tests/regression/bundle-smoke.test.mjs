@@ -39,6 +39,30 @@ test('bundle injects favorite star on detail page', async () => {
   assert.ok(star, 'star should mount on detail page');
 });
 
+test('bundle renders Watch Replay control on detail page', async () => {
+  const gameId = '230521696';
+  const env = bootBundle({
+    html: loadFixture('detail-1v1-spartain.html'),
+    url: `https://aoe4world.com/players/883212-Spartain/games/${gameId}?sig=x`,
+    sendMessageImpl: (msg) => {
+      if (msg.type === 'isFavorite') return { isFavorite: false };
+      if (msg.type === 'checkReplays') return {
+        available: { [gameId]: true },
+        gamePatches: { [gameId]: '4.0.0/10056' },
+        currentPatch: '4.0.0/10056',
+        previousPatch: null,
+        knownPatches: ['4.0.0/10056'],
+      };
+      return { ok: true };
+    },
+  });
+  await env.waitForScan();
+  await env.tick(1000);
+  const replay = env.document.querySelector('.aoe4-replay-btn [role="button"]');
+  assert.ok(replay, 'Watch Replay control should mount on detail page');
+  assert.match(replay.textContent, /Watch Replay/);
+});
+
 test('bundle does not inject favorite star on profile/listing page', async () => {
   const env = bootBundle({
     html: loadFixture('profile-spartain.html'),

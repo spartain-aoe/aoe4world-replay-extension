@@ -187,7 +187,7 @@ export function unitIconCandidates(
   const fromData = lookupUnitDataForIcon(icon, player);
   if (fromData?.icon) candidates.push(fromData.icon);
   else if (fromData?.id) candidates.push(`https://data.aoe4world.com/images/units/${fromData.id}.png`);
-  const alias = unitAlias(icon, player);
+  const alias = unitAlias(icon || label, player);
   if (alias?.slugs?.length) {
     for (const slug of alias.slugs) candidates.push(`https://data.aoe4world.com/images/units/${slug}.png`);
   }
@@ -221,9 +221,19 @@ export function unitAlias(
   player: PlayerSummary | null = null
 ): { displayName: string; slugs: string[] } | null {
   const raw = String(icon || '').split('/').pop() || '';
+  const normalized = raw.replace(/[-\s]+/g, '_').toLowerCase();
   const civ = normalizeName(player?.civilizationAttrib || player?.civilization);
   if (civ === 'french' && /^lancer(?:_\d+)?$/.test(raw)) {
     return { displayName: 'Royal Knight', slugs: ['royal-knight-2'] };
+  }
+  if (/^(?:zgn|zhuge_nu|repeater_crossbowman)(?:_\d+)?$/.test(normalized)) {
+    return { displayName: 'Repeater Crossbowman', slugs: ['zhuge-nu-2', 'zhuge-nu-3'] };
+  }
+  if (/^(?:early_)?palace_guard(?:_\d+)?$/.test(normalized)) {
+    return { displayName: normalized.startsWith('early_') ? 'Early Palace Guard' : 'Palace Guard', slugs: ['palace-guard-2', 'palace-guard-3', 'palace-guard-4', 'palace-guard-1'] };
+  }
+  if (/^(?:ram|battering_ram)(?:_\d+)?$/.test(normalized)) {
+    return { displayName: 'Ram', slugs: ['battering-ram-2', 'battering-ram-1'] };
   }
   return null;
 }

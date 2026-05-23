@@ -222,29 +222,38 @@ export function installDetailsTableMetrics(summary: GameSummary, statsMetrics?: 
 
 export function scheduleDetailsTableMetrics(summary: GameSummary, gameId?: string): void {
   const token = ++detailsInstallToken;
+  let currentStatsMetrics: readonly StatsPlayerMetric[] | undefined;
+  const installCurrentMetrics = (): void => {
+    installDetailsTableMetrics(summary, currentStatsMetrics);
+  };
   const delays = [0, 500, 1500, 4000];
   for (const delay of delays) {
     setTimeout(() => {
       if (token !== detailsInstallToken) return;
       if (gameId && getGameIdFromUrl(window.location.href) !== gameId) return;
-      installDetailsTableMetrics(summary);
+      installCurrentMetrics();
     }, delay);
   }
-  requestStatsMetrics(summary, gameId, token);
+  requestStatsMetrics(gameId, token, (players) => {
+    currentStatsMetrics = players;
+    installCurrentMetrics();
+  });
 }
 
-function requestStatsMetrics(summary: GameSummary, gameId: string | undefined, token: number): void {
+function requestStatsMetrics(gameId: string | undefined, token: number, onLoaded: (players: readonly StatsPlayerMetric[]) => void): void {
   if (!gameId || typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) return;
   chrome.runtime.sendMessage({ type: 'getStatsMetrics', matchId: gameId }, (response: StatsMetricsResponse | undefined) => {
     if (token !== detailsInstallToken) return;
     if (getGameIdFromUrl(window.location.href) !== gameId) return;
     if (!response?.success || !Array.isArray(response.players)) return;
+    const players = response.players;
+    onLoaded(players);
     const delays = [0, 500, 1500];
     for (const delay of delays) {
       setTimeout(() => {
         if (token !== detailsInstallToken) return;
         if (getGameIdFromUrl(window.location.href) !== gameId) return;
-        installDetailsTableMetrics(summary, response.players);
+        onLoaded(players);
       }, delay);
     }
   });
