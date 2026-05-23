@@ -226,14 +226,5 @@ export function unitAlias(
   if (civ === 'french' && /^lancer(?:_\d+)?$/.test(raw)) {
     return { displayName: 'Royal Knight', slugs: ['royal-knight-2'] };
   }
-  if (/^(?:zgn|zhuge_nu|repeater_crossbowman)(?:_\d+)?$/.test(normalized)) {
-    return { displayName: 'Repeater Crossbowman', slugs: ['zhuge-nu-2', 'zhuge-nu-3'] };
-  }
-  if (/^(?:early_)?palace_guard(?:_\d+)?$/.test(normalized)) {
-    return { displayName: normalized.startsWith('early_') ? 'Early Palace Guard' : 'Palace Guard', slugs: ['palace-guard-2', 'palace-guard-3', 'palace-guard-4', 'palace-guard-1'] };
-  }
-  if (/^(?:ram|battering_ram)(?:_\d+)?$/.test(normalized)) {
-    return { displayName: 'Ram', slugs: ['battering-ram-2', 'battering-ram-1'] };
-  }
   return null;
 }

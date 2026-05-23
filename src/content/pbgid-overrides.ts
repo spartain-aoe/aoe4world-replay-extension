@@ -1,0 +1,96 @@
+import type { PbgidEntry } from './types.ts';
+
+const UNIT_IMAGE_BASE = 'https://data.aoe4world.com/images/units/';
+
+// Replay summaries can contain fresh or civ-specific unit PBGIDs before they
+// land in aoe4world/data. Keep this list narrow and let generated data win.
+function unit(name: string, key: string, slug: string): PbgidEntry {
+  return { n: name, k: key, i: `${UNIT_IMAGE_BASE}${slug}.png` };
+}
+
+const BATTERING_RAM = unit('Battering Ram', 'battering-ram', 'battering-ram-2');
+
+export const pbgidUnitOverridesMap: Map<number, PbgidEntry> = new Map([
+  [166629, unit('Zhuge Nu', 'zhuge-nu', 'zhuge-nu-2')],
+  [166630, unit('Zhuge Nu', 'zhuge-nu', 'zhuge-nu-3')],
+  [166631, unit('Zhuge Nu', 'zhuge-nu', 'zhuge-nu-4')],
+  [2104165, unit('Zhuge Nu', 'zhuge-nu', 'zhuge-nu-2')],
+  [2104166, unit('Zhuge Nu', 'zhuge-nu', 'zhuge-nu-3')],
+  [2104167, unit('Zhuge Nu', 'zhuge-nu', 'zhuge-nu-4')],
+  [2555054, unit('Zhuge Nu', 'zhuge-nu', 'zhuge-nu-2')],
+  [7079241, unit('Zhuge Nu', 'zhuge-nu', 'zhuge-nu-3')],
+  [8111470, unit('Zhuge Nu', 'zhuge-nu', 'zhuge-nu-4')],
+
+  [137570, unit('Palace Guard', 'palace-guard', 'palace-guard-3')],
+  [137574, unit('Palace Guard', 'palace-guard', 'palace-guard-4')],
+  [2138270, unit('Palace Guard', 'palace-guard', 'palace-guard-2')],
+  [2320449, unit('Palace Guard', 'palace-guard', 'palace-guard-4')],
+  [4841125, unit('Palace Guard', 'palace-guard', 'palace-guard-3')],
+
+  [9004160, unit('Horseman', 'horseman', 'horseman-2')],
+  [9004164, unit('Horseman', 'horseman', 'horseman-3')],
+  [9004165, unit('Horseman', 'horseman', 'horseman-4')],
+  [9004188, unit('Mohe Tribesman', 'mohe-tribesman', 'mohe-tribesman-2')],
+  [9004189, unit('Mohe Tribesman', 'mohe-tribesman', 'mohe-tribesman-3')],
+  [9004190, unit('Mohe Tribesman', 'mohe-tribesman', 'mohe-tribesman-4')],
+  [9004731, unit('Iron Pagoda', 'iron-pagoda', 'iron-pagoda-2')],
+  [9003926, unit('Iron Pagoda', 'iron-pagoda', 'iron-pagoda-3')],
+  [9003927, unit('Iron Pagoda', 'iron-pagoda', 'iron-pagoda-4')],
+  [9004734, unit('Iron Pagoda', 'iron-pagoda', 'iron-pagoda-2')],
+  [9004191, unit('Iron Pagoda', 'iron-pagoda', 'iron-pagoda-3')],
+  [9004192, unit('Iron Pagoda', 'iron-pagoda', 'iron-pagoda-4')],
+
+  [3872959, unit('Keshik', 'keshik', 'keshik-2')],
+  [8150218, unit('Keshik', 'keshik', 'keshik-3')],
+  [8838814, unit('Keshik', 'keshik', 'keshik-4')],
+  [2132734, unit('Desert Raider', 'desert-raider', 'desert-raider-3')],
+  [2132735, unit('Desert Raider', 'desert-raider', 'desert-raider-4')],
+  [2141247, unit('Dervish', 'dervish', 'dervish-2')],
+
+  [132288, BATTERING_RAM],
+  [132289, BATTERING_RAM],
+  [133339, BATTERING_RAM],
+  [133471, BATTERING_RAM],
+  [134693, BATTERING_RAM],
+  [134733, BATTERING_RAM],
+  [135944, BATTERING_RAM],
+  [136059, BATTERING_RAM],
+  [137527, BATTERING_RAM],
+  [142043, BATTERING_RAM],
+  [166303, BATTERING_RAM],
+  [166409, BATTERING_RAM],
+  [199681, BATTERING_RAM],
+  [199731, BATTERING_RAM],
+  [2034651, BATTERING_RAM],
+  [2046453, BATTERING_RAM],
+  [2108158, BATTERING_RAM],
+  [2108159, BATTERING_RAM],
+  [2108160, BATTERING_RAM],
+  [2108162, BATTERING_RAM],
+  [2108163, BATTERING_RAM],
+  [2108165, BATTERING_RAM],
+  [2108166, BATTERING_RAM],
+  [2108168, BATTERING_RAM],
+  [2140595, BATTERING_RAM],
+  [2145249, BATTERING_RAM],
+  [2145250, BATTERING_RAM],
+  [2288733, BATTERING_RAM],
+  [2444402, BATTERING_RAM],
+  [2917079, BATTERING_RAM],
+  [2997701, BATTERING_RAM],
+  [4086884, BATTERING_RAM],
+  [4937577, BATTERING_RAM],
+  [5000102, BATTERING_RAM],
+  [5000110, BATTERING_RAM],
+  [5197194, BATTERING_RAM],
+  [5357892, BATTERING_RAM],
+  [6256450, BATTERING_RAM],
+  [7881271, BATTERING_RAM],
+  [8130911, BATTERING_RAM],
+  [8635755, BATTERING_RAM],
+  [8930370, BATTERING_RAM],
+  [8999925, BATTERING_RAM],
+  [8999979, BATTERING_RAM],
+  [8999983, BATTERING_RAM],
+  [9004028, BATTERING_RAM],
+]);

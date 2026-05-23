@@ -1,4 +1,5 @@
 import type { PbgidEntry } from './types.ts';
+import { pbgidUnitOverridesMap } from './pbgid-overrides.ts';
 
 interface PbgidMapResponse {
   units?: Record<string, PbgidEntry>;
@@ -43,7 +44,8 @@ export function ensurePbgidMap(onLoaded?: () => void): Promise<void> {
 
 export function resolveUnitByPbgid(pbgid: number | null | undefined): PbgidEntry | null {
   if (!pbgid) return null;
-  return pbgidUnitsMap.get(Number(pbgid)) || null;
+  const id = Number(pbgid);
+  return pbgidUnitsMap.get(id) || pbgidUnitOverridesMap.get(id) || null;
 }
 
 export function resolveTechByPbgid(pbgid: number | null | undefined): PbgidEntry | null {
