@@ -83,6 +83,8 @@
     const style = document.createElement('style');
     style.id = CHART_GATE_STYLE_ID;
     style.textContent = `
+      body:has(select option[value="army"]):has(select option[value="workers"])
+        canvas:not([data-aoe4-summary-canvas]):not(.aoe4-ageup-overlay),
       div:has(select option[value="army"]):has(select option[value="workers"])
         canvas:not([data-aoe4-summary-canvas]):not(.aoe4-ageup-overlay) {
         opacity: 0 !important;

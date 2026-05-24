@@ -84,6 +84,35 @@ async function setup(options = {}) {
   await installReplayApiMock(bg);
   page = ctx.pages()[0] || await ctx.newPage();
   await page.addInitScript(() => {
+    window.__aoe4NativeTimelineVisibilitySamples = [];
+    const sampleNativeTimeline = () => {
+      const select = document.querySelector('select');
+      const canvas = document.querySelector('canvas:not([data-aoe4-summary-canvas]):not(.aoe4-ageup-overlay)');
+      const summaryReady = !!document.querySelector('optgroup[data-aoe4-summary-plus], canvas[data-aoe4-summary-canvas]');
+      if (select && canvas && !summaryReady) {
+        const style = getComputedStyle(canvas);
+        const rect = canvas.getBoundingClientRect();
+        const visible = style.display !== 'none' &&
+          style.visibility !== 'hidden' &&
+          Number(style.opacity) > 0.01 &&
+          rect.width > 0 &&
+          rect.height > 0;
+        window.__aoe4NativeTimelineVisibilitySamples.push({
+          t: Math.round(performance.now()),
+          visible,
+          opacity: style.opacity,
+          display: style.display,
+          visibility: style.visibility,
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+          colorGate: !!document.getElementById('__aoe4-color-ext-chart-gate'),
+          summaryGate: !!document.getElementById('__aoe4-summary-default-gate'),
+        });
+      }
+      if (!summaryReady && performance.now() < 8000) requestAnimationFrame(sampleNativeTimeline);
+    };
+    requestAnimationFrame(sampleNativeTimeline);
+
     window.addEventListener('DOMContentLoaded', () => {
       if (document.querySelector('table[data-summary-plus-details-fixture]')) return;
       const host = document.createElement('div');
@@ -199,6 +228,16 @@ async function dragSelectMostOfChart() {
       return select?.value?.includes('army-composition') &&
         [...document.querySelectorAll('h3')].some(h => (h.textContent || '').includes('Army Composition'));
     }, null, { timeout: 20000 });
+  });
+
+  await test('native Army Value chart is never visibly sampled before Summary+ renders', async () => {
+    const samples = await page.evaluate(() => window.__aoe4NativeTimelineVisibilitySamples || []);
+    const visible = samples.filter(sample => sample.visible);
+    assert(samples.length > 0, 'startup visibility probe did not sample native timeline canvas');
+    assert(
+      visible.length === 0,
+      `native Army/Army Value canvas was visible before Summary+ rendered: ${JSON.stringify(visible.slice(0, 8))}`
+    );
   });
 
   await test('startup native Army Value reset does not displace default Army Composition', async () => {
