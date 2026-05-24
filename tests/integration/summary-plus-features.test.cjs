@@ -163,6 +163,32 @@ async function dragSelectMostOfChart() {
   await setup();
   await navigate();
 
+  await test('startup native Army Value reset does not displace default Army Composition', async () => {
+    await page.waitForFunction(() => {
+      const select = document.querySelector('select');
+      return select?.value?.includes('army-composition') &&
+        [...document.querySelectorAll('h3')].some(h => (h.textContent || '').includes('Army Composition'));
+    }, null, { timeout: 10000 });
+    const dispatched = await page.evaluate(() => {
+      const select = document.querySelector('select');
+      if (!select || ![...select.options].some(option => option.value === 'army')) return false;
+      select.value = 'army';
+      select.dispatchEvent(new Event('input', { bubbles: true }));
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    });
+    assert(dispatched, 'could not dispatch synthetic native Army Value reset');
+    await page.waitForTimeout(500);
+    const state = await page.evaluate(() => ({
+      selectValue: document.querySelector('select')?.value || '',
+      heading: [...document.querySelectorAll('h3')].map(h => (h.textContent || '').trim()).find(text => text.includes('Army')) || '',
+      hasSummaryCanvas: !!document.querySelector('canvas[data-aoe4-summary-canvas]'),
+    }));
+    assert(state.selectValue.includes('army-composition'), `synthetic native reset changed select: ${JSON.stringify(state)}`);
+    assert(state.heading.includes('Army Composition'), `synthetic native reset changed heading: ${JSON.stringify(state)}`);
+    assert(state.hasSummaryCanvas, `synthetic native reset restored native canvas: ${JSON.stringify(state)}`);
+  });
+
   await test('Idle TC details metric is injected from stats telemetry cache', async () => {
     await page.waitForFunction(() => [...document.querySelectorAll('th')]
       .some(th => (th.textContent || '').trim() === 'Idle TC'), null, { timeout: 10000 });

@@ -212,6 +212,7 @@ export interface TimelineElements {
     __aoe4SummaryCharts?: Map<string, Chart>;
     __aoe4SummaryListenerInstalled?: boolean;
     __aoe4SummaryDefaultGameId?: string;
+    __aoe4SummaryNativeResetSuppressUntil?: number;
   };
   chartBox: HTMLElement & ChartBoxExtensions;
   canvas: HTMLCanvasElement & CanvasExtensions;

@@ -143,16 +143,13 @@ export function tryAddSummaryCharts(): void {
       if (!response.ok) throw new Error(`AoE4 World summary returned HTTP ${response.status}`);
       return response.json();
     })
-    .then(async (summary: GameSummary) => {
+    .then((summary: GameSummary) => {
       if (!isCurrentGameRequest(timeline, gameId, routeToken)) {
         if (timeline.root.dataset.aoe4SummaryPlusPendingUrl === url) {
           delete timeline.root.dataset.aoe4SummaryPlusPendingUrl;
         }
         return;
       }
-      const replayColors = await replayColorsPromise;
-      if (!isCurrentGameRequest(timeline, gameId, routeToken)) return;
-      applyReplayColorResult(summary, replayColors, gameId);
       if (timeline.root.dataset.aoe4SummaryPlusPendingUrl === url) {
         delete timeline.root.dataset.aoe4SummaryPlusPendingUrl;
       }
@@ -178,22 +175,6 @@ export function tryAddSummaryCharts(): void {
         delete timeline.root.dataset.aoe4SummaryPlusPendingUrl;
       }
     });
-}
-
-function applyReplayColorResult(
-  summary: GameSummary,
-  result: ReplayColorLoadResult,
-  gameId: string,
-): boolean {
-  if (result.ok) {
-    summary._aoe4ReplayPlayers = result.players;
-    if (applyReplayColorsToNativeChart(summary)) return true;
-    releaseNativeChartColorGate();
-    return false;
-  }
-  releaseNativeChartColorGate();
-  warnReplayColorFailure(gameId, result);
-  return false;
 }
 
 function warnReplayColorFailure(gameId: string, result: ReplayColorLoadResult): void {
@@ -278,6 +259,7 @@ function installTimelineMetrics(timeline: TimelineElements, summary: GameSummary
   const defaultChart = charts[0];
   if (defaultChart && timeline.select.__aoe4SummaryDefaultGameId !== gameId) {
     timeline.select.__aoe4SummaryDefaultGameId = gameId;
+    timeline.select.__aoe4SummaryNativeResetSuppressUntil = Date.now() + 4000;
     clearRangeState(timeline.chartBox);
     hideNativeAgeUpOverlay(timeline);
     timeline.select.__aoe4SummaryActiveValue = defaultChart.value;
@@ -426,6 +408,19 @@ function handleTimelineMetricEvent(event: Event, timeline: TimelineElements): vo
     clearRangeState(timeline.chartBox);
   }
   if (!chart) {
+    const previousSummaryValue = previousValue || '';
+    const suppressSyntheticNativeReset = Boolean(
+      previousSummaryValue &&
+      timeline.select.__aoe4SummaryCharts?.has(previousSummaryValue) &&
+      event.isTrusted === false &&
+      Date.now() < (timeline.select.__aoe4SummaryNativeResetSuppressUntil || 0)
+    );
+    if (suppressSyntheticNativeReset) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      syncSelectValue(timeline.select, previousSummaryValue, () => !!timeline.select.__aoe4SummaryCharts?.has(previousSummaryValue));
+      return;
+    }
     delete timeline.select.__aoe4SummaryActiveValue;
     restoreNativeTimeline(timeline);
     showNativeAgeUpOverlay(timeline);
