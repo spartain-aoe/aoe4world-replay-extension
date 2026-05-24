@@ -66,6 +66,42 @@ export function unitMergeKey(icon: string | null | undefined, pbgid: number | nu
   return stripped || filename;
 }
 
+const BUILDING_UPGRADE_PATTERNS = [
+  /\bemplacement\b/,
+  /\b(?:arrow|handcannon)\s+slits?\b/,
+  /\bboiling\s+oil\b/,
+  /\bfortifications?\b/,
+  /\btower\s+shields?\b/,
+  /\btreasure\s+towers?\b/,
+  /\b(?:stone\s+)?wall\s+towers?\b/,
+];
+
+function isBuildingUpgradeText(value: unknown): boolean {
+  const text = String(value || '')
+    .toLowerCase()
+    .replace(/[-_]+/g, ' ')
+    .replace(/\.[a-z0-9]+(?:[?#].*)?$/i, '')
+    .trim();
+  return Boolean(text && BUILDING_UPGRADE_PATTERNS.some(pattern => pattern.test(text)));
+}
+
+export function isBuildingUpgrade(
+  upgradeIcon: string | null | undefined,
+  upgradeName: string | null | undefined,
+  upgradePbgid: number | null = null,
+): boolean {
+  const fromTech = resolveTechByPbgid(upgradePbgid);
+  const fromUpgrade = resolveUpgradeByPbgid(upgradePbgid);
+  return [
+    upgradeIcon,
+    upgradeName,
+    fromTech?.n,
+    fromTech?.k,
+    fromUpgrade?.n,
+    fromUpgrade?.k,
+  ].some(isBuildingUpgradeText);
+}
+
 export function findUnitGroupForUpgrade(
   upgradeIcon: string | null | undefined,
   upgradeName: string,
@@ -73,6 +109,8 @@ export function findUnitGroupForUpgrade(
   upgradePbgid: number | null = null,
   iconAliasMap: Map<string, string> | null = null
 ): UnitGroup | null {
+  if (isBuildingUpgrade(upgradeIcon, upgradeName, upgradePbgid)) return null;
+
   const getGroup = (key: string): UnitGroup | null => grouped.get(key) || null;
   const fromPbgidUp = resolveUpgradeByPbgid(upgradePbgid);
   if (fromPbgidUp?.b) {

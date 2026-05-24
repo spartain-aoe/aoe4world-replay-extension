@@ -291,6 +291,26 @@ describe('buildArmySeriesForPlayer', () => {
     }
   });
 
+  test('omits defensive building upgrades from unit upgrade dots', () => {
+    const player = {
+      name: 'P1',
+      civilization: 'english',
+      buildOrder: [
+        { type: 'Unit', icon: 'icons/races/common/units/springald_3', finished: [10, 30], destroyed: [] },
+        { type: 'Upgrade', icon: 'icons/races/common/technologies/springald_emplacement_3', finished: [40, 50], destroyed: [] },
+        { type: 'Upgrade', icon: 'icons/races/common/technologies/springald_crews_3', finished: [60], destroyed: [] },
+      ],
+    };
+    const result = buildArmySeriesForPlayer(player, [0, 20, 40, 60], '#4dabf7');
+    const springald = result.find(s => s.mergeKey === 'springald');
+    assert.ok(springald, 'should have Springald series');
+    assert.deepEqual(
+      springald.upgrades.map(upgrade => upgrade.name),
+      ['Springald Crews'],
+      'building/emplacement techs are omitted but unit techs remain',
+    );
+  });
+
   test('includes baseColor on each series entry', () => {
     const player = {
       name: 'P1',
