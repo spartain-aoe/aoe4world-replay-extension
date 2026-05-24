@@ -32,6 +32,33 @@ export function activeCountValues(labels: readonly number[], finished: readonly 
   });
 }
 
+// Cost-weighted active series. finishedCosts/destroyedCosts must be parallel arrays to
+// finished/destroyed times (same index = same event). Missing cost entries are treated as 0.
+export function activeValueValues(
+  labels: readonly number[],
+  finished: readonly number[],
+  finishedCosts: readonly number[],
+  destroyed: readonly number[],
+  destroyedCosts: readonly number[]
+): number[] {
+  const created = finished.map((t, i) => ({ t, c: finishedCosts[i] || 0 })).sort((a, b) => a.t - b.t);
+  const lost = destroyed.map((t, i) => ({ t, c: destroyedCosts[i] || 0 })).sort((a, b) => a.t - b.t);
+  let createdIndex = 0;
+  let lostIndex = 0;
+  let value = 0;
+  return labels.map(time => {
+    while (createdIndex < created.length && created[createdIndex].t <= time) {
+      value += created[createdIndex].c;
+      createdIndex++;
+    }
+    while (lostIndex < lost.length && lost[lostIndex].t <= time) {
+      value -= lost[lostIndex].c;
+      lostIndex++;
+    }
+    return Math.max(0, value);
+  });
+}
+
 export function collapseChartSeries(series: ChartSeries[], limit: number): ChartSeries[] {
   if (series.length <= limit) return series.sort((a, b) => maxAbs(b.values) - maxAbs(a.values));
   const sorted = [...series].sort((a, b) => maxAbs(b.values) - maxAbs(a.values));
@@ -45,15 +72,34 @@ export function collapseChartSeries(series: ChartSeries[], limit: number): Chart
   }
   otherFinished.sort((a, b) => a - b);
   otherDestroyed.sort((a, b) => a - b);
-  keep.push({
+  const sampleLen = sorted[0].values.length;
+  const sumAtIndex = (key: 'values' | '_countValues' | '_valueValues', index: number): number =>
+    rest.reduce((sum, item) => {
+      const arr = item[key];
+      return sum + (arr ? (arr[index] || 0) : 0);
+    }, 0);
+  const hasCount = rest.some(item => Array.isArray(item._countValues));
+  const hasValue = rest.some(item => Array.isArray(item._valueValues));
+  const otherCountValues = hasCount
+    ? Array.from({ length: sampleLen }, (_, i) => sumAtIndex('_countValues', i))
+    : undefined;
+  const otherValueValues = hasValue
+    ? Array.from({ length: sampleLen }, (_, i) => sumAtIndex('_valueValues', i))
+    : undefined;
+  const otherValueTotal = rest.reduce((sum, item) => sum + (item._valueTotal || 0), 0);
+  const otherSeries: ChartSeries = {
     label: 'Other',
     unitLabel: 'Other',
     color: '#94a3b8',
     iconCandidates: [],
     createdTotal: rest.reduce((sum, item) => sum + (item.createdTotal || 0), 0),
-    values: sorted[0].values.map((_, index) => rest.reduce((sum, item) => sum + (item.values[index] || 0), 0)),
+    values: Array.from({ length: sampleLen }, (_, i) => sumAtIndex('values', i)),
     _finishedTimes: otherFinished,
-    _destroyedTimes: otherDestroyed
-  });
+    _destroyedTimes: otherDestroyed,
+  };
+  if (otherCountValues) otherSeries._countValues = otherCountValues;
+  if (otherValueValues) otherSeries._valueValues = otherValueValues;
+  if (otherValueTotal > 0) otherSeries._valueTotal = otherValueTotal;
+  keep.push(otherSeries);
   return keep;
 }

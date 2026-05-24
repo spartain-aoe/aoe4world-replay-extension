@@ -37,6 +37,7 @@ import {
   removeArmyUnitLegend,
   refreshArmyLegendNames,
 } from './legend.ts';
+import { renderArmyModeToggle, detachArmyModeToggle } from './army-mode.ts';
 import { clearRangeState, syncRangeUi } from './range.ts';
 import { attachCanvasTooltip, detachCanvasTooltip } from './tooltip.ts';
 import {
@@ -504,8 +505,13 @@ function renderTimelineMetric(timeline: TimelineElements, chart: Chart): void {
   timeline.heading.textContent = chart.title;
   const canvas = ensureSummaryCanvas(timeline);
   canvas.style.display = '';
-  if (chart.type === 'army') renderArmyUnitLegend(timeline, chart);
-  else removeArmyUnitLegend(timeline);
+  if (chart.type === 'army') {
+    renderArmyUnitLegend(timeline, chart);
+    renderArmyModeToggle(timeline, chart);
+  } else {
+    removeArmyUnitLegend(timeline);
+    detachArmyModeToggle(timeline);
+  }
   animateTimelineCanvasChart(canvas, chart);
   attachTimelineHoverGuard(timeline, chart);
   attachCanvasTooltip(canvas, chart, timeline);

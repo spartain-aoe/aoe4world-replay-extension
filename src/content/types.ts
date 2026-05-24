@@ -115,6 +115,9 @@ export interface ChartSeries {
   playerName?: string;
   _finishedTimes?: number[];
   _destroyedTimes?: number[];
+  _countValues?: number[];
+  _valueValues?: number[];
+  _valueTotal?: number;
   _hidden?: boolean;
   _stackBase?: Float32Array;
   _stackTop?: Float32Array;
@@ -160,6 +163,7 @@ export interface Chart {
   meta?: string;
   options?: {
     height?: number;
+    armyMode?: 'count' | 'value';
     [key: string]: unknown;
   };
   data: ChartData;
@@ -217,6 +221,7 @@ export interface TimelineElements {
   __aoe4LegendChart?: Chart;
   __aoe4BuildOrderRetryScheduled?: boolean;
   __aoe4BuildOrderObserver?: MutationObserver | null;
+  __aoe4ArmyModeToggle?: HTMLElement | null;
 }
 
 export interface TimelineRootExtensions {

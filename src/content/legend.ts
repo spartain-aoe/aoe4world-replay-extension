@@ -192,7 +192,12 @@ export function armyLegendUnitRow(
 
   const total = document.createElement('span');
   total.className = 'aoe4-army-unit-total';
-  total.textContent = Math.round(unit.createdTotal || 0).toLocaleString();
+  const armyMode = chart.options?.armyMode === 'value' ? 'value' : 'count';
+  const totalCount = unit.createdTotal || 0;
+  const totalValue = unit._valueTotal || 0;
+  total.textContent = armyMode === 'value'
+    ? `${Math.round(totalValue).toLocaleString()} res`
+    : Math.round(totalCount).toLocaleString();
 
   const deltaTrained = document.createElement('span');
   deltaTrained.className = 'aoe4-army-unit-delta-trained';

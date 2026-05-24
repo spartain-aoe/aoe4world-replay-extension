@@ -59,16 +59,22 @@ export function buildArmyCharts(summary: GameSummary, nativeColors: NativeColors
     const baseColor = playerColor(summary, player, originalIndex, nativeColors);
     const sign = player.team == null ? (originalIndex === 0 ? 1 : -1) : (teamSigns.get(player.team) ?? (originalIndex === 0 ? 1 : -1));
     return (buildArmySeriesForPlayer(player, labels, baseColor) as ChartSeries[])
-      .map((item: ChartSeries) => ({
-        ...item,
-        playerName,
-        team: player.team,
-        sign,
-        // Labels can collide across civ substitutions.
-        key: `army:${player.profileId || originalIndex}:${item.mergeKey || item.label}`,
-        label: `${playerName}: ${item.label}`,
-        values: item.values.map((value: number) => value * sign)
-      }));
+      .map((item: ChartSeries) => {
+        const signedCount = (item._countValues || item.values).map((value: number) => value * sign);
+        const signedValue = item._valueValues ? item._valueValues.map((value: number) => value * sign) : undefined;
+        return {
+          ...item,
+          playerName,
+          team: player.team,
+          sign,
+          // Labels can collide across civ substitutions.
+          key: `army:${player.profileId || originalIndex}:${item.mergeKey || item.label}`,
+          label: `${playerName}: ${item.label}`,
+          values: signedCount,
+          _countValues: signedCount,
+          ...(signedValue ? { _valueValues: signedValue } : {}),
+        };
+      });
   });
   if (!labels.length || !series.length) return [];
   precomputeStackedValues(series);
@@ -78,7 +84,7 @@ export function buildArmyCharts(summary: GameSummary, nativeColors: NativeColors
     meta: 'Active military units for all players over time from AoE4 World unit build-order finished/destroyed timestamps.',
     data: { labels, series },
     type: 'army',
-    options: { height: 280 }
+    options: { height: 280, armyMode: 'count' }
   }];
 }
 

@@ -1,0 +1,229 @@
+// Regression: Army Composition chart count↔value toggle.
+// Verifies that:
+//  - renderArmyModeToggle mounts a two-button chip into the chart box
+//  - clicking the value button swaps `series.values` to the precomputed `_valueValues`
+//  - the chart's `options.armyMode` flips
+//  - tearing down the toggle removes the button container
+//  - chart-controller wires the toggle for army charts and detaches for other types
+import { test, describe } from 'node:test';
+import assert from 'node:assert/strict';
+import { parseHTML } from 'linkedom';
+
+import {
+  applyArmyModeToChart,
+  chartHasValueData,
+  detachArmyModeToggle,
+  getActiveArmyMode,
+  renderArmyModeToggle,
+  setActiveArmyMode,
+} from '../../src/content/army-mode.ts';
+
+function makeDomGlobals() {
+  const { window, document } = parseHTML('<!doctype html><html><body></body></html>');
+  globalThis.window = window;
+  globalThis.document = document;
+  globalThis.HTMLElement = window.HTMLElement;
+  globalThis.MouseEvent = window.MouseEvent;
+  globalThis.localStorage = {
+    _data: new Map(),
+    getItem(k) { return this._data.has(k) ? this._data.get(k) : null; },
+    setItem(k, v) { this._data.set(k, String(v)); },
+    removeItem(k) { this._data.delete(k); },
+    clear() { this._data.clear(); },
+  };
+  return { window, document };
+}
+
+function makeArmyChart() {
+  return {
+    type: 'army',
+    options: { height: 280, armyMode: 'count' },
+    data: {
+      labels: [0, 30, 60, 90, 120],
+      series: [
+        {
+          label: 'Knight',
+          color: '#4dabf7',
+          values: [0, 1, 2, 2, 1],
+          _countValues: [0, 1, 2, 2, 1],
+          _valueValues: [0, 200, 400, 400, 200],
+          _valueTotal: 400,
+          _sign: 1,
+        },
+        {
+          label: 'Spearman',
+          color: '#74c0fc',
+          values: [0, 2, 4, 4, 4],
+          _countValues: [0, 2, 4, 4, 4],
+          _valueValues: [0, 120, 240, 240, 240],
+          _valueTotal: 240,
+          _sign: 1,
+        },
+      ],
+    },
+  };
+}
+
+function makeTimelineElements(document) {
+  const chartBox = document.createElement('div');
+  chartBox.style.position = '';
+  const canvas = document.createElement('canvas');
+  document.body.appendChild(chartBox);
+  chartBox.appendChild(canvas);
+  return { chartBox, canvas };
+}
+
+describe('army-mode toggle UI', () => {
+  test('renderArmyModeToggle mounts a two-button chip with correct labels', () => {
+    const { document } = makeDomGlobals();
+    const chart = makeArmyChart();
+    const timeline = makeTimelineElements(document);
+
+    renderArmyModeToggle(timeline, chart);
+
+    const toggle = timeline.chartBox.querySelector('.aoe4-army-mode-toggle');
+    assert.ok(toggle, 'toggle container mounted');
+    const buttons = toggle.querySelectorAll('.aoe4-army-mode-toggle-btn');
+    assert.equal(buttons.length, 2, 'two buttons');
+    const labels = Array.from(buttons).map(b => b.textContent.trim());
+    assert.ok(labels.includes('# Units'), 'has count label');
+    assert.ok(labels.includes('$ Value'), 'has value label');
+    assert.equal(toggle.getAttribute('role'), 'group');
+    assert.equal(timeline.chartBox.style.position, 'relative', 'chartBox positioned relative for absolute child');
+    assert.equal(timeline.__aoe4ArmyModeToggle, toggle, 'stored on timeline');
+  });
+
+  test('clicking $ Value swaps series.values to _valueValues and flips chart.options.armyMode', () => {
+    const { document } = makeDomGlobals();
+    const chart = makeArmyChart();
+    const timeline = makeTimelineElements(document);
+    renderArmyModeToggle(timeline, chart);
+
+    // sanity: starts in count mode (default)
+    assert.equal(chart.options.armyMode, 'count');
+    assert.equal(chart.data.series[0].values, chart.data.series[0]._countValues);
+
+    const valueBtn = Array.from(timeline.chartBox.querySelectorAll('.aoe4-army-mode-toggle-btn'))
+      .find(b => b.dataset.mode === 'value');
+    assert.ok(valueBtn, 'value button found');
+
+    valueBtn.click();
+
+    assert.equal(chart.options.armyMode, 'value', 'mode flipped');
+    assert.equal(chart.data.series[0].values, chart.data.series[0]._valueValues, 'series 0 swapped');
+    assert.equal(chart.data.series[1].values, chart.data.series[1]._valueValues, 'series 1 swapped');
+    assert.equal(valueBtn.getAttribute('aria-pressed'), 'true', 'value button pressed');
+    const countBtn = Array.from(timeline.chartBox.querySelectorAll('.aoe4-army-mode-toggle-btn'))
+      .find(b => b.dataset.mode === 'count');
+    assert.equal(countBtn.getAttribute('aria-pressed'), 'false', 'count button unpressed');
+  });
+
+  test('clicking # Units swaps back to _countValues', () => {
+    const { document } = makeDomGlobals();
+    const chart = makeArmyChart();
+    chart.options.armyMode = 'value';
+    const timeline = makeTimelineElements(document);
+    renderArmyModeToggle(timeline, chart);
+
+    // After render, mode should be applied as value (since chart.options had it)
+    assert.equal(chart.data.series[0].values, chart.data.series[0]._valueValues);
+
+    const countBtn = Array.from(timeline.chartBox.querySelectorAll('.aoe4-army-mode-toggle-btn'))
+      .find(b => b.dataset.mode === 'count');
+    countBtn.click();
+
+    assert.equal(chart.options.armyMode, 'count');
+    assert.equal(chart.data.series[0].values, chart.data.series[0]._countValues);
+  });
+
+  test('detachArmyModeToggle removes the toggle from chartBox', () => {
+    const { document } = makeDomGlobals();
+    const chart = makeArmyChart();
+    const timeline = makeTimelineElements(document);
+    renderArmyModeToggle(timeline, chart);
+    assert.ok(timeline.chartBox.querySelector('.aoe4-army-mode-toggle'));
+
+    detachArmyModeToggle(timeline);
+    assert.equal(timeline.chartBox.querySelector('.aoe4-army-mode-toggle'), null, 'toggle gone');
+    assert.equal(timeline.__aoe4ArmyModeToggle, null, 'reference cleared');
+  });
+
+  test('re-rendering replaces (not duplicates) the toggle', () => {
+    const { document } = makeDomGlobals();
+    const chart = makeArmyChart();
+    const timeline = makeTimelineElements(document);
+
+    renderArmyModeToggle(timeline, chart);
+    renderArmyModeToggle(timeline, chart);
+    renderArmyModeToggle(timeline, chart);
+
+    const all = timeline.chartBox.querySelectorAll('.aoe4-army-mode-toggle');
+    assert.equal(all.length, 1, 'only one toggle present after multiple renders');
+  });
+
+  test('renderArmyModeToggle is a no-op for non-army charts', () => {
+    const { document } = makeDomGlobals();
+    const chart = makeArmyChart();
+    chart.type = 'resources';
+    const timeline = makeTimelineElements(document);
+    renderArmyModeToggle(timeline, chart);
+    assert.equal(timeline.chartBox.querySelector('.aoe4-army-mode-toggle'), null);
+    assert.equal(timeline.__aoe4ArmyModeToggle, null);
+  });
+
+  test('persisted mode is honored on next render', () => {
+    const { document } = makeDomGlobals();
+    setActiveArmyMode('value');
+    assert.equal(getActiveArmyMode(), 'value');
+
+    const chart = makeArmyChart();
+    chart.options = { height: 280 };
+    const timeline = makeTimelineElements(document);
+    renderArmyModeToggle(timeline, chart);
+
+    assert.equal(chart.options.armyMode, 'value', 'restored from storage');
+    assert.equal(chart.data.series[0].values, chart.data.series[0]._valueValues);
+
+    setActiveArmyMode('count');
+  });
+});
+
+describe('applyArmyModeToChart', () => {
+  test('idempotent: applying same mode twice leaves series references stable', () => {
+    makeDomGlobals();
+    const chart = makeArmyChart();
+    applyArmyModeToChart(chart, 'value');
+    const firstRef = chart.data.series[0].values;
+    applyArmyModeToChart(chart, 'value');
+    assert.equal(chart.data.series[0].values, firstRef);
+  });
+
+  test('no-op for non-army chart', () => {
+    makeDomGlobals();
+    const chart = makeArmyChart();
+    chart.type = 'resources';
+    const before = chart.data.series[0].values;
+    applyArmyModeToChart(chart, 'value');
+    assert.equal(chart.data.series[0].values, before);
+    assert.equal(chart.options.armyMode, 'count', 'unchanged');
+  });
+});
+
+describe('chartHasValueData', () => {
+  test('true when any series has non-zero _valueValues', () => {
+    const chart = makeArmyChart();
+    assert.equal(chartHasValueData(chart), true);
+  });
+
+  test('false when all _valueValues are zero', () => {
+    const chart = makeArmyChart();
+    for (const s of chart.data.series) s._valueValues = s._valueValues.map(() => 0);
+    assert.equal(chartHasValueData(chart), false);
+  });
+
+  test('false for non-army chart', () => {
+    const chart = makeArmyChart();
+    chart.type = 'resources';
+    assert.equal(chartHasValueData(chart), false);
+  });
+});

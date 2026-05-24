@@ -7,6 +7,7 @@ import {
   precomputeStackedValues,
 } from '../../src/content/army-series.ts';
 import { pbgidUnitsMap } from '../../src/content/pbgid-map.ts';
+import { buildUnitDataIndexForCiv, unitDataIndex } from '../../src/content/unit-data-cache.ts';
 
 
 describe('buildArmySeriesForPlayer', () => {
@@ -176,6 +177,64 @@ describe('buildArmySeriesForPlayer', () => {
       restore(2122538, previousSingular);
       restore(2122352, previousPluralFoot);
       restore(2122350, previousSingularFoot);
+    }
+  });
+
+  test('computes parallel _countValues and _valueValues (cost-weighted) per series', () => {
+    // Seed unit cost data for two english units: Knight (200 res) and Spearman (60 res).
+    const previousEnglish = unitDataIndex.get('english');
+    buildUnitDataIndexForCiv('english', [
+      { id: 'knight', baseId: 'knight', name: 'Knight', icon: 'units/knight-2', pbgid: 700001, age: 2, classes: ['cavalry'], costs: { food: 140, gold: 60, total: 200 } },
+      { id: 'spearman', baseId: 'spearman', name: 'Spearman', icon: 'units/spearman-1', pbgid: 700002, age: 1, classes: ['infantry'], costs: { food: 50, wood: 10, total: 60 } },
+    ]);
+    try {
+      const player = {
+        name: 'P1',
+        civilization: 'english',
+        buildOrder: [
+          { id: 'k1', type: 'Unit', icon: 'units/knight', pbgid: 700001, finished: [10, 30], destroyed: [50] },
+          { id: 's1', type: 'Unit', icon: 'units/spearman', pbgid: 700002, finished: [5, 25, 45], destroyed: [] },
+        ],
+      };
+      const labels = [0, 20, 40, 60];
+      const result = buildArmySeriesForPlayer(player, labels, '#4dabf7');
+      const knight = result.find(s => s.mergeKey === 'knight');
+      const spear = result.find(s => s.mergeKey === 'spearman');
+      assert.ok(knight && spear, 'both series exist');
+
+      assert.deepEqual([...knight._countValues], [0, 1, 2, 1], 'knight count-mode active values');
+      assert.deepEqual([...knight._valueValues], [0, 200, 400, 200], 'knight value-mode active values (200 per knight)');
+      assert.equal(knight._valueTotal, 400, 'knight _valueTotal = 2 trains * 200 res');
+      assert.equal(knight.values, knight._countValues, 'default values reference count array');
+
+      assert.deepEqual([...spear._countValues], [0, 1, 2, 3], 'spearman count-mode');
+      assert.deepEqual([...spear._valueValues], [0, 60, 120, 180], 'spearman value-mode (60 per spearman)');
+      assert.equal(spear._valueTotal, 180);
+    } finally {
+      if (previousEnglish) unitDataIndex.set('english', previousEnglish);
+      else unitDataIndex.delete('english');
+    }
+  });
+
+  test('_valueValues falls back to zeros when unit cost data is not loaded', () => {
+    const previousEnglish = unitDataIndex.get('english');
+    unitDataIndex.delete('english');
+    try {
+      const player = {
+        name: 'P1',
+        civilization: 'english',
+        buildOrder: [
+          { id: 'k1', type: 'Unit', icon: 'units/knight', finished: [10, 30], destroyed: [] },
+        ],
+      };
+      const result = buildArmySeriesForPlayer(player, [0, 20, 40], '#4dabf7');
+      const knight = result.find(s => s.mergeKey === 'knight');
+      assert.ok(knight);
+      assert.deepEqual([...knight._countValues], [0, 1, 2]);
+      assert.deepEqual([...knight._valueValues], [0, 0, 0], 'no cost data => zeros');
+      assert.equal(knight._valueTotal, 0);
+    } finally {
+      if (previousEnglish) unitDataIndex.set('english', previousEnglish);
     }
   });
 

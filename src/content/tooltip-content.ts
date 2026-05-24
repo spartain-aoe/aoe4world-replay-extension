@@ -219,7 +219,7 @@ export function updateArmyMiniTooltip(
         .sort((a, b) => b.value - a.value);
       if (playerUnits.length) playerUnits[0].isClosest = true;
       for (const row of playerUnits) {
-        appendTooltipRow(tooltip, row, { type: 'army' }, collapsedPlayerName);
+        appendTooltipRow(tooltip, row, { type: 'army', options: chart.options }, collapsedPlayerName);
       }
     } else if (closestKey) {
       const series = chart.data.series;
@@ -237,7 +237,7 @@ export function updateArmyMiniTooltip(
           isClosest: true,
           previous, next: value
         };
-        appendTooltipRow(tooltip, row, { type: 'army' }, item.playerName || '');
+        appendTooltipRow(tooltip, row, { type: 'army', options: chart.options }, item.playerName || '');
       } else {
         title.textContent = timeText;
         tooltip.appendChild(title);

@@ -1,19 +1,21 @@
 import { normalizeName } from './dom.ts';
 import { shadeColor } from './colors.ts';
 import { resolveUnitByPbgid } from './pbgid-map.ts';
-import { lookupUnitDataByPbgid } from './unit-data-cache.ts';
+import { lookupUnitDataByPbgid, lookupUnitDataForIcon } from './unit-data-cache.ts';
 import {
   isArmyUnit,
   unitMergeKey,
   unitLabel,
   unitLabelBase,
   unitIconCandidates,
+  unitCostTotal,
   findUnitGroupForUpgrade,
 } from './unit-mapping.ts';
 import {
   numericArray,
   maxAbs,
   activeCountValues,
+  activeValueValues,
   collapseChartSeries,
 } from './chart-utils.ts';
 import type { ChartSeries, PlayerSummary, UnitUpgrade } from './types.ts';
@@ -21,6 +23,8 @@ import type { ChartSeries, PlayerSummary, UnitUpgrade } from './types.ts';
 type ArmySeriesGroup = {
   finished: number[];
   destroyed: number[];
+  finishedCosts: number[];
+  destroyedCosts: number[];
   icon: string;
   pbgid?: number;
   hasCanonicalPbgid?: boolean;
@@ -37,7 +41,7 @@ type FindUnitGroupForUpgrade = (
   iconAliasMap?: Map<string, string>,
 ) => ArmySeriesGroup | undefined;
 
-const findUnitGroupForUpgradeTyped = findUnitGroupForUpgrade as FindUnitGroupForUpgrade;
+const findUnitGroupForUpgradeTyped = findUnitGroupForUpgrade as unknown as FindUnitGroupForUpgrade;
 const collapseChartSeriesTyped = collapseChartSeries as (series: ChartSeries[], limit: number) => ChartSeries[];
 
 // Normalizes a unit display label to a singular merge-key so plural variants
@@ -132,6 +136,8 @@ export function buildArmySeriesForPlayer(player: PlayerSummary, labels: number[]
       group = {
         finished: [],
         destroyed: [],
+        finishedCosts: [],
+        destroyedCosts: [],
         icon: item.icon,
         pbgid: item.pbgid,
         hasCanonicalPbgid,
@@ -147,8 +153,14 @@ export function buildArmySeriesForPlayer(player: PlayerSummary, labels: number[]
       group.label = unitLabelBase(key, item.icon, player, item.pbgid);
     }
 
-    group.finished.push(...numericArray(item.finished), ...numericArray(item.transformed));
-    group.destroyed.push(...numericArray(item.destroyed));
+    const unitData = lookupUnitDataByPbgid(item.pbgid, player) || lookupUnitDataForIcon(item.icon, player);
+    const cost = unitCostTotal(unitData);
+    const finishedTimes = [...numericArray(item.finished), ...numericArray(item.transformed)];
+    const destroyedTimes = numericArray(item.destroyed);
+    group.finished.push(...finishedTimes);
+    group.destroyed.push(...destroyedTimes);
+    for (let i = 0; i < finishedTimes.length; i++) group.finishedCosts.push(cost);
+    for (let i = 0; i < destroyedTimes.length; i++) group.destroyedCosts.push(cost);
   }
 
   for (const item of player.buildOrder || []) {
@@ -169,6 +181,8 @@ export function buildArmySeriesForPlayer(player: PlayerSummary, labels: number[]
     if (existing) {
       existing.finished.push(...group.finished);
       existing.destroyed.push(...group.destroyed);
+      existing.finishedCosts.push(...group.finishedCosts);
+      existing.destroyedCosts.push(...group.destroyedCosts);
       existing.upgrades.push(...group.upgrades);
       const existingLabelNorm = (existing.label || '').toLowerCase().trim();
       const groupLabelNorm = label.toLowerCase().trim();
@@ -198,6 +212,9 @@ export function buildArmySeriesForPlayer(player: PlayerSummary, labels: number[]
       if (fromPbgid?.i && !iconCands.includes(fromPbgid.i)) iconCands.unshift(fromPbgid.i);
       const finishedTimes = events.finished.slice().sort((a: number, b: number) => a - b);
       const destroyedTimes = events.destroyed.slice().sort((a: number, b: number) => a - b);
+      const countValues = activeCountValues(labels, events.finished, events.destroyed);
+      const valueValues = activeValueValues(labels, events.finished, events.finishedCosts, events.destroyed, events.destroyedCosts);
+      const valueTotal = events.finishedCosts.reduce((sum, c) => sum + (c || 0), 0);
       return {
         label: events.label,
         mergeKey: events.mergeKey,
@@ -208,7 +225,10 @@ export function buildArmySeriesForPlayer(player: PlayerSummary, labels: number[]
         iconCandidates: iconCands,
         createdTotal: events.finished.length,
         upgrades: events.upgrades.sort((a: UnitUpgrade, b: UnitUpgrade) => a.time - b.time),
-        values: activeCountValues(labels, events.finished, events.destroyed),
+        values: countValues,
+        _countValues: countValues,
+        _valueValues: valueValues,
+        _valueTotal: valueTotal,
         _finishedTimes: finishedTimes,
         _destroyedTimes: destroyedTimes,
       };
