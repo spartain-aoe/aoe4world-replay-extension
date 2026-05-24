@@ -147,7 +147,6 @@ async function sanitizedGameBodyHtml() {
     const clone = document.body.cloneNode(true);
     clone.querySelectorAll([
       'optgroup[data-aoe4-summary-plus]',
-      'canvas[data-aoe4-summary-canvas]',
       '.aoe4-ageup-overlay',
       '.aoe4-army-unit-legend',
       '.aoe4-legend-breakdown',

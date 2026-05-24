@@ -211,6 +211,7 @@ export interface TimelineElements {
     __aoe4SummaryActiveValue?: string;
     __aoe4SummaryCharts?: Map<string, Chart>;
     __aoe4SummaryListenerInstalled?: boolean;
+    __aoe4SummaryDefaultGameId?: string;
   };
   chartBox: HTMLElement & ChartBoxExtensions;
   canvas: HTMLCanvasElement & CanvasExtensions;

@@ -256,7 +256,9 @@ function installTimelineMetrics(timeline: TimelineElements, summary: GameSummary
     optgroup = document.createElement('optgroup');
     optgroup.dataset.aoe4SummaryPlus = 'true';
     optgroup.label = 'Summary+';
-    timeline.select.appendChild(optgroup);
+  }
+  if (timeline.select.firstElementChild !== optgroup) {
+    timeline.select.insertBefore(optgroup, timeline.select.firstElementChild);
   }
   optgroup.replaceChildren();
   for (const chart of charts) {
@@ -271,6 +273,17 @@ function installTimelineMetrics(timeline: TimelineElements, summary: GameSummary
     const handler = (event: Event): void => handleTimelineMetricEvent(event, timeline);
     timeline.select.addEventListener('input', handler, true);
     timeline.select.addEventListener('change', handler, true);
+  }
+
+  const defaultChart = charts[0];
+  if (defaultChart && timeline.select.__aoe4SummaryDefaultGameId !== gameId) {
+    timeline.select.__aoe4SummaryDefaultGameId = gameId;
+    clearRangeState(timeline.chartBox);
+    hideNativeAgeUpOverlay(timeline);
+    timeline.select.__aoe4SummaryActiveValue = defaultChart.value;
+    renderTimelineMetric(timeline, defaultChart);
+    syncSelectValue(timeline.select, defaultChart.value, () => !!timeline.select.__aoe4SummaryCharts?.has(defaultChart.value));
+    ensureReplayPlayerColors(timeline);
   }
 
   ensureBuildOrderObserver(timeline);

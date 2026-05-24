@@ -183,9 +183,20 @@ async function dragSelectMostOfChart() {
   });
 
   await test('Summary+ chart options are first and ordered Army → AVL → DV → resources', async () => {
-    const labels = await page.evaluate(() => {
+    await page.waitForFunction(() => {
+      const select = document.querySelector('select');
+      return select?.value?.includes('army-composition') &&
+        [...document.querySelectorAll('h3')].some(h => (h.textContent || '').includes('Army Composition'));
+    }, null, { timeout: 10000 });
+    const state = await page.evaluate(() => {
+      const select = document.querySelector('select');
       const og = document.querySelector('optgroup[data-aoe4-summary-plus]');
-      return [...(og?.querySelectorAll('option') || [])].map(opt => (opt.textContent || '').trim());
+      return {
+        firstChildIsSummary: select?.firstElementChild === og,
+        selectValue: select?.value || '',
+        heading: [...document.querySelectorAll('h3')].map(h => (h.textContent || '').trim()).find(text => text.includes('Army Composition')) || '',
+        labels: [...(og?.querySelectorAll('option') || [])].map(opt => (opt.textContent || '').trim()),
+      };
     });
     const expectedStart = [
       'Army Composition',
@@ -197,9 +208,12 @@ async function dragSelectMostOfChart() {
       'Resources Gathered: Gold',
       'Resources Gathered: Stone',
     ];
+    assert(state.firstChildIsSummary, 'Summary+ optgroup should be the first select child so it appears before native charts');
+    assert(state.selectValue.includes('army-composition'), `Army Composition should be selected by default, got ${state.selectValue}`);
+    assert(state.heading.includes('Army Composition'), `Timeline heading should default to Army Composition, got ${state.heading}`);
     assert(
-      expectedStart.every((label, index) => labels[index] === label),
-      `unexpected Summary+ order:\nexpected ${JSON.stringify(expectedStart)}\nactual   ${JSON.stringify(labels.slice(0, expectedStart.length))}`,
+      expectedStart.every((label, index) => state.labels[index] === label),
+      `unexpected Summary+ order:\nexpected ${JSON.stringify(expectedStart)}\nactual   ${JSON.stringify(state.labels.slice(0, expectedStart.length))}`,
     );
   });
 
