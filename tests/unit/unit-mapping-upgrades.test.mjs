@@ -77,6 +77,7 @@ test('findUnitGroupForUpgrade: iconAliasMap routes legacy icon → canonical gro
 test('isBuildingUpgrade identifies emplacement/tower defensive upgrades', () => {
   assert.equal(isBuildingUpgrade('technologies/springald_emplacement_3', 'Springald Emplacement'), true);
   assert.equal(isBuildingUpgrade('technologies/cannon-emplacement-4.png', 'Cannon Emplacement'), true);
+  assert.equal(isBuildingUpgrade('icons/races/common/upgrades/springald', 'Springald'), true);
   assert.equal(isBuildingUpgrade('technologies/handcannon_slits_2', 'Handcannon Slits'), true);
   assert.equal(isBuildingUpgrade('technologies/tower_shields_4', 'Tower Shields'), true);
   assert.equal(isBuildingUpgrade('technologies/springald_crews_3', 'Springald Crews'), false);
@@ -86,6 +87,12 @@ test('isBuildingUpgrade identifies emplacement/tower defensive upgrades', () => 
 test('findUnitGroupForUpgrade: omits Springald Emplacement from Springald unit dots', () => {
   const grouped = makeGrouped([['springald', 'Springald']]);
   const got = findUnitGroupForUpgrade('technologies/springald_emplacement_3', 'Springald Emplacement', grouped);
+  assert.equal(got, null);
+});
+
+test('findUnitGroupForUpgrade: omits outpost Springald upgrades that only expose generic springald icon/name', () => {
+  const grouped = makeGrouped([['springald', 'Springald']]);
+  const got = findUnitGroupForUpgrade('icons/races/common/upgrades/springald', 'Springald', grouped, 127329);
   assert.equal(got, null);
 });
 

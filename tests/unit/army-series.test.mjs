@@ -298,6 +298,7 @@ describe('buildArmySeriesForPlayer', () => {
       buildOrder: [
         { type: 'Unit', icon: 'icons/races/common/units/springald_3', finished: [10, 30], destroyed: [] },
         { type: 'Upgrade', icon: 'icons/races/common/technologies/springald_emplacement_3', finished: [40, 50], destroyed: [] },
+        { type: 'Upgrade', icon: 'icons/races/common/upgrades/springald', pbgid: 127329, finished: [55], destroyed: [] },
         { type: 'Upgrade', icon: 'icons/races/common/technologies/springald_crews_3', finished: [60], destroyed: [] },
       ],
     };

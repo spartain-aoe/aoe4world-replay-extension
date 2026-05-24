@@ -80,9 +80,13 @@ function isBuildingUpgradeText(value: unknown): boolean {
   const text = String(value || '')
     .toLowerCase()
     .replace(/[-_]+/g, ' ')
+    .replace(/[\\/]+/g, ' ')
     .replace(/\.[a-z0-9]+(?:[?#].*)?$/i, '')
     .trim();
-  return Boolean(text && BUILDING_UPGRADE_PATTERNS.some(pattern => pattern.test(text)));
+  return Boolean(text && (
+    BUILDING_UPGRADE_PATTERNS.some(pattern => pattern.test(text)) ||
+    /\bupgrades?\s+(?:springald|cannon|mangonel|trebuchet|javelin|bed\s+crossbow|mengan\s+mouke|great\s+bombard|naval\s+springald)\b/.test(text)
+  ));
 }
 
 export function isBuildingUpgrade(

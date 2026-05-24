@@ -60,7 +60,13 @@ const summaryFixtures = [
   },
 ];
 
-async function installAoe4WorldFixtureRoutes(page) {
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function installAoe4WorldFixtureRoutes(page, options = {}) {
+  const summaryDelayMs = Number(options.summaryDelayMs) || 0;
+
   await page.route('https://data.aoe4world.com/images/units/**', async (route) => {
     await route.fulfill({
       status: 200,
@@ -94,6 +100,7 @@ async function installAoe4WorldFixtureRoutes(page) {
     const url = route.request().url();
     const summaryFixture = summaryFixtures.find((fixture) => fixture.pattern.test(url));
     if (summaryFixture) {
+      if (summaryDelayMs > 0) await delay(summaryDelayMs);
       await route.fulfill({
         status: 200,
         contentType: 'application/json',

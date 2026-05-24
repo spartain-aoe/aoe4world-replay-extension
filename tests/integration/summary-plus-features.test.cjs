@@ -37,7 +37,7 @@ async function test(name, fn) {
   }
 }
 
-async function setup() {
+async function setup(options = {}) {
   try { fs.rmSync(PROFILE_PATH, { recursive: true, force: true }); } catch (_) {}
   ctx = await chromium.launchPersistentContext(PROFILE_PATH, {
     headless: false,
@@ -64,6 +64,13 @@ async function setup() {
         time: now,
         permanent: true,
         patch: '4.0.0/8719',
+      },
+      colors_v5_233034826: {
+        savedAt: now,
+        players: [
+          { name: 'spartain', civilization: 'jin_dynasty', color: 6, slot: 0, playerId: 24574510 },
+          { name: 'DonationDonation', civilization: 'golden_horde', color: 1, slot: 1, playerId: 20653422 },
+        ],
       },
       stats_metrics_v1_233034826: {
         savedAt: now,
@@ -94,7 +101,7 @@ async function setup() {
       document.body.appendChild(host);
     }, { once: true });
   });
-  await installAoe4WorldFixtureRoutes(page);
+  await installAoe4WorldFixtureRoutes(page, { summaryDelayMs: options.summaryDelayMs || 0 });
 }
 
 async function teardown() {
@@ -160,8 +167,39 @@ async function dragSelectMostOfChart() {
 
 (async () => {
   console.log('\n=== Summary+ Feature Integration ===');
-  await setup();
-  await navigate();
+  await setup({ summaryDelayMs: 2000 });
+
+  await test('native Army Value chart is hidden while default Summary+ chart is pending', async () => {
+    await page.goto(GAME_1V1, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+    await page.waitForFunction(() =>
+      !!document.querySelector('select') &&
+      !!document.querySelector('canvas:not([data-aoe4-summary-canvas]):not(.aoe4-ageup-overlay)') &&
+      !document.querySelector('optgroup[data-aoe4-summary-plus]'),
+      null,
+      { timeout: 10000 },
+    );
+    await page.waitForFunction(() => !document.getElementById('__aoe4-color-ext-chart-gate'), null, { timeout: 10000 });
+    const state = await page.evaluate(() => {
+      const canvas = document.querySelector('canvas:not([data-aoe4-summary-canvas]):not(.aoe4-ageup-overlay)');
+      const style = canvas ? getComputedStyle(canvas) : null;
+      return {
+        hasSummaryOptgroup: !!document.querySelector('optgroup[data-aoe4-summary-plus]'),
+        colorGate: !!document.getElementById('__aoe4-color-ext-chart-gate'),
+        summaryGate: !!document.getElementById('__aoe4-summary-default-gate'),
+        nativeCanvasOpacity: style?.opacity || '',
+        nativeCanvasDisplay: style?.display || '',
+      };
+    });
+    assert(!state.hasSummaryOptgroup, `Summary+ loaded before pending-state probe: ${JSON.stringify(state)}`);
+    assert(!state.colorGate, `probe should run after color gate release: ${JSON.stringify(state)}`);
+    assert(state.summaryGate, `Summary+ default gate missing while summary is pending: ${JSON.stringify(state)}`);
+    assert(state.nativeCanvasOpacity === '0', `native Army Value canvas visible while Summary+ pending: ${JSON.stringify(state)}`);
+    await page.waitForFunction(() => {
+      const select = document.querySelector('select');
+      return select?.value?.includes('army-composition') &&
+        [...document.querySelectorAll('h3')].some(h => (h.textContent || '').includes('Army Composition'));
+    }, null, { timeout: 20000 });
+  });
 
   await test('startup native Army Value reset does not displace default Army Composition', async () => {
     await page.waitForFunction(() => {
@@ -187,6 +225,35 @@ async function dragSelectMostOfChart() {
     assert(state.selectValue.includes('army-composition'), `synthetic native reset changed select: ${JSON.stringify(state)}`);
     assert(state.heading.includes('Army Composition'), `synthetic native reset changed heading: ${JSON.stringify(state)}`);
     assert(state.hasSummaryCanvas, `synthetic native reset restored native canvas: ${JSON.stringify(state)}`);
+  });
+
+  await test('default Army Composition has no visible native age-up overlay duplicate', async () => {
+    await page.waitForTimeout(1500);
+    const state = await page.evaluate(() => {
+      const overlays = [...document.querySelectorAll('.aoe4-ageup-overlay')].map(overlay => {
+        const style = getComputedStyle(overlay);
+        const rect = overlay.getBoundingClientRect();
+        return {
+          display: style.display,
+          opacity: style.opacity,
+          width: rect.width,
+          height: rect.height,
+        };
+      });
+      return {
+        selected: document.querySelector('select')?.value || '',
+        heading: [...document.querySelectorAll('h3')].map(h => (h.textContent || '').trim()).find(text => text.includes('Army Composition')) || '',
+        overlays,
+        summaryGate: !!document.getElementById('__aoe4-summary-default-gate'),
+      };
+    });
+    assert(state.selected.includes('army-composition'), `expected default Army Composition selected: ${JSON.stringify(state)}`);
+    assert(state.heading.includes('Army Composition'), `expected Army Composition heading: ${JSON.stringify(state)}`);
+    assert(!state.summaryGate, `default loading gate should be removed after Summary+ render: ${JSON.stringify(state)}`);
+    const visibleOverlays = state.overlays.filter(overlay =>
+      overlay.display !== 'none' && overlay.opacity !== '0' && overlay.width > 0 && overlay.height > 0
+    );
+    assert(visibleOverlays.length === 0, `native age-up overlay is visible on Summary+ chart: ${JSON.stringify(state)}`);
   });
 
   await test('Idle TC details metric is injected from stats telemetry cache', async () => {

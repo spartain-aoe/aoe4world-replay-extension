@@ -61,11 +61,32 @@ type BuildOrderElement = HTMLElement & {
 let summaryChartUrl = '';
 let summaryChartGameId = '';
 let summaryChartRouteToken = 0;
+const SUMMARY_DEFAULT_GATE_STYLE_ID = '__aoe4-summary-default-gate';
+
+function ensureSummaryDefaultGateStyle(): void {
+  if (document.getElementById(SUMMARY_DEFAULT_GATE_STYLE_ID)) return;
+  const style = document.createElement('style');
+  style.id = SUMMARY_DEFAULT_GATE_STYLE_ID;
+  style.textContent = `
+    body:has(select option[value="army"]):has(select option[value="workers"])
+      canvas:not([data-aoe4-summary-canvas]):not(.aoe4-ageup-overlay),
+    div:has(select option[value="army"]):has(select option[value="workers"])
+      canvas:not([data-aoe4-summary-canvas]):not(.aoe4-ageup-overlay) {
+      opacity: 0 !important;
+    }
+  `;
+  (document.head || document.documentElement).appendChild(style);
+}
+
+function removeSummaryDefaultGateStyle(): void {
+  document.getElementById(SUMMARY_DEFAULT_GATE_STYLE_ID)?.remove();
+}
 
 function clearActiveSummaryRoute(): void {
   summaryChartUrl = '';
   summaryChartGameId = '';
   summaryChartRouteToken++;
+  removeSummaryDefaultGateStyle();
   sendChartInjectorControlMessage({ source: 'aoe4-color-ext', type: 'clear-colors' });
 }
 
@@ -123,6 +144,7 @@ export function tryAddSummaryCharts(): void {
   timeline.root.__aoe4GameId = gameId;
   timeline.root.__aoe4RouteToken = routeToken;
   delete timeline.root.__aoe4ColorsRequestedFor;
+  ensureSummaryDefaultGateStyle();
 
   const profileId = getProfileIdFromUrl(window.location.href);
   const replayColorsPromise = recolorEnabled()
@@ -148,6 +170,7 @@ export function tryAddSummaryCharts(): void {
         if (timeline.root.dataset.aoe4SummaryPlusPendingUrl === url) {
           delete timeline.root.dataset.aoe4SummaryPlusPendingUrl;
         }
+        removeSummaryDefaultGateStyle();
         return;
       }
       if (timeline.root.dataset.aoe4SummaryPlusPendingUrl === url) {
@@ -167,6 +190,7 @@ export function tryAddSummaryCharts(): void {
         return;
       }
       releaseNativeChartColorGate();
+      removeSummaryDefaultGateStyle();
       console.warn('[replay] Failed to load AoE4 World summary metrics:', message);
       if (timeline.root.dataset.aoe4SummaryPlusUrl === url) {
         delete timeline.root.dataset.aoe4SummaryPlusUrl;
@@ -269,7 +293,10 @@ function installTimelineMetrics(timeline: TimelineElements, summary: GameSummary
   }
 
   ensureBuildOrderObserver(timeline);
-  if (!timeline.select.__aoe4SummaryCharts?.has(timeline.select.value)) {
+  const activeSummaryValue = timeline.select.__aoe4SummaryActiveValue || '';
+  if (activeSummaryValue && timeline.select.__aoe4SummaryCharts?.has(activeSummaryValue)) {
+    hideNativeAgeUpOverlay(timeline);
+  } else if (!timeline.select.__aoe4SummaryCharts?.has(timeline.select.value)) {
     showNativeAgeUpOverlay(timeline);
   } else {
     hideNativeAgeUpOverlay(timeline);
@@ -507,6 +534,8 @@ function ensureSummaryCanvas(timeline: TimelineElements): TimelineElements['canv
 }
 
 function renderTimelineMetric(timeline: TimelineElements, chart: Chart): void {
+  removeSummaryDefaultGateStyle();
+  hideNativeAgeUpOverlay(timeline);
   if (!timeline.heading.dataset.aoe4NativeTitle) {
     timeline.heading.dataset.aoe4NativeTitle = timeline.heading.textContent || '';
   }

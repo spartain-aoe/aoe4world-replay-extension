@@ -208,9 +208,30 @@ function assert(condition, msg) {
     assert(count >= 7, `expected >=7 chart options, got ${count}`);
   });
 
-  await test('age-up overlay is present', async () => {
-    const has = await page.evaluate(() => !!document.querySelector('.aoe4-ageup-overlay'));
-    assert(has, 'age-up overlay not found');
+  await test('default Summary+ chart does not show duplicate native age-up overlay', async () => {
+    const state = await page.evaluate(() => {
+      const select = document.querySelector('select');
+      const overlays = [...document.querySelectorAll('.aoe4-ageup-overlay')].map(overlay => {
+        const style = getComputedStyle(overlay);
+        const rect = overlay.getBoundingClientRect();
+        return {
+          display: style.display,
+          opacity: style.opacity,
+          width: rect.width,
+          height: rect.height,
+        };
+      });
+      return {
+        selected: select?.value || '',
+        summaryCanvas: !!document.querySelector('canvas[data-aoe4-summary-canvas]'),
+        visibleOverlays: overlays.filter(overlay =>
+          overlay.display !== 'none' && overlay.opacity !== '0' && overlay.width > 0 && overlay.height > 0
+        ).length,
+      };
+    });
+    assert(state.selected.includes('army-composition'), `expected Army Composition selected by default: ${JSON.stringify(state)}`);
+    assert(state.summaryCanvas, `expected Summary+ canvas by default: ${JSON.stringify(state)}`);
+    assert(state.visibleOverlays === 0, `native age-up overlay should not duplicate Summary+ age-ups: ${JSON.stringify(state)}`);
   });
 
   await test('favorites star is present on detail page', async () => {
