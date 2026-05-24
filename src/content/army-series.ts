@@ -40,6 +40,25 @@ type FindUnitGroupForUpgrade = (
 const findUnitGroupForUpgradeTyped = findUnitGroupForUpgrade as FindUnitGroupForUpgrade;
 const collapseChartSeriesTyped = collapseChartSeries as (series: ChartSeries[], limit: number) => ChartSeries[];
 
+// Normalizes a unit display label to a singular merge-key so plural variants
+// (e.g. "Wynguard Rangers" -> "wynguard ranger", "Wynguard Footmen" -> "wynguard footman")
+// collapse onto their singular counterpart in the final series list.
+export function normalizeLabelForMerge(label: string): string {
+  const lower = String(label || '').toLowerCase().trim();
+  if (!lower) return '';
+  const parts = lower.split(/\s+/);
+  const last = parts[parts.length - 1];
+  let singular = last;
+  if (singular.endsWith('men') && singular.length > 3) singular = singular.slice(0, -3) + 'man';
+  else if (singular.endsWith('ies') && singular.length > 3) singular = singular.slice(0, -3) + 'y';
+  else if (singular.endsWith('sses')) singular = singular.slice(0, -2);
+  else if (singular.endsWith('s') && !singular.endsWith('ss') && !singular.endsWith('us') && singular.length > 3) {
+    singular = singular.slice(0, -1);
+  }
+  parts[parts.length - 1] = singular;
+  return parts.join(' ');
+}
+
 function addAliasCandidate(aliases: Map<string, Set<string>>, alias: string, canonical: string): void {
   if (!alias || !canonical || alias === canonical) return;
   let bucket = aliases.get(alias);
@@ -145,19 +164,28 @@ export function buildArmySeriesForPlayer(player: PlayerSummary, labels: number[]
   const byLabel = new Map<string, ArmySeriesGroup>();
   for (const group of grouped.values()) {
     const label = group.label || group.mergeKey;
-    const existing = byLabel.get(label);
+    const mergeLabel = normalizeLabelForMerge(label) || label;
+    const existing = byLabel.get(mergeLabel);
     if (existing) {
       existing.finished.push(...group.finished);
       existing.destroyed.push(...group.destroyed);
       existing.upgrades.push(...group.upgrades);
-      if ((!existing.pbgid || (!existing.hasCanonicalPbgid && group.hasCanonicalPbgid)) && group.pbgid) {
+      const existingLabelNorm = (existing.label || '').toLowerCase().trim();
+      const groupLabelNorm = label.toLowerCase().trim();
+      const existingIsSingular = existingLabelNorm === mergeLabel;
+      const groupIsSingular = groupLabelNorm === mergeLabel;
+      const promoteToCanonical = (!existing.pbgid || (!existing.hasCanonicalPbgid && group.hasCanonicalPbgid)) && group.pbgid;
+      const promoteToSingular = groupIsSingular && !existingIsSingular && group.pbgid;
+      if (promoteToCanonical || promoteToSingular) {
         existing.pbgid = group.pbgid;
         existing.icon = group.icon;
         existing.hasCanonicalPbgid = group.hasCanonicalPbgid;
         existing.label = group.label;
+      } else if (groupIsSingular && !existingIsSingular) {
+        existing.label = group.label;
       }
     } else {
-      byLabel.set(label, group);
+      byLabel.set(mergeLabel, group);
     }
   }
 

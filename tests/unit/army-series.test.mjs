@@ -122,6 +122,63 @@ describe('buildArmySeriesForPlayer', () => {
     }
   });
 
+  test('merges plural/singular display-name variants (Wynguard Rangers + Wynguard Ranger) into one series labeled with the singular', () => {
+    // Mirrors English game 234739848: the "summon" PBGID resolves to "Wynguard Rangers"
+    // and the deployed unit PBGID resolves to "Wynguard Ranger" -- both should collapse
+    // onto the singular display label so the chart shows one series.
+    const previousPlural = pbgidUnitsMap.get(2075743);
+    const previousSingular = pbgidUnitsMap.get(2122538);
+    const previousPluralFoot = pbgidUnitsMap.get(2122352);
+    const previousSingularFoot = pbgidUnitsMap.get(2122350);
+    pbgidUnitsMap.set(2075743, {
+      n: 'Wynguard Rangers',
+      k: 'wynguard-rangers',
+      i: 'https://data.aoe4world.com/images/units/wynguard-rangers-1.png',
+    });
+    pbgidUnitsMap.set(2122538, {
+      n: 'Wynguard Ranger',
+      k: 'wynguard-ranger',
+      i: 'https://data.aoe4world.com/images/units/wynguard-ranger-4.png',
+    });
+    pbgidUnitsMap.set(2122352, {
+      n: 'Wynguard Footmen',
+      k: 'wynguard-footmen',
+      i: 'https://data.aoe4world.com/images/units/wynguard-footmen-1.png',
+    });
+    pbgidUnitsMap.set(2122350, {
+      n: 'Wynguard Footman',
+      k: 'wynguard-footman',
+      i: 'https://data.aoe4world.com/images/units/wynguard-footman-4.png',
+    });
+    try {
+      const player = {
+        name: 'P1',
+        civilization: 'english',
+        buildOrder: [
+          { id: 'wr-plural', type: 'Unit', icon: 'icons/races/english/units/wynguard_rangers', pbgid: 2075743, finished: [10, 20], destroyed: [] },
+          { id: 'wr-singular', type: 'Unit', icon: 'icons/races/english/units/wynguard_ranger', pbgid: 2122538, finished: [15, 25, 35], destroyed: [] },
+          { id: 'wf-plural', type: 'Unit', icon: 'icons/races/english/units/wynguard_footmen', pbgid: 2122352, finished: [40], destroyed: [] },
+          { id: 'wf-singular', type: 'Unit', icon: 'icons/races/english/units/wynguard_footman', pbgid: 2122350, finished: [45, 55], destroyed: [] },
+        ],
+      };
+      const result = buildArmySeriesForPlayer(player, [0, 20, 40, 60], '#4dabf7');
+      const rangerSeries = result.filter(s => /wynguard ranger/i.test(s.label));
+      const footmanSeries = result.filter(s => /wynguard footman/i.test(s.label));
+      assert.equal(rangerSeries.length, 1, 'rangers plural+singular collapse into one series');
+      assert.equal(footmanSeries.length, 1, 'footmen plural+singular collapse into one series');
+      assert.equal(rangerSeries[0].label, 'Wynguard Ranger', 'singular label preferred for display');
+      assert.equal(footmanSeries[0].label, 'Wynguard Footman', 'singular label preferred for display');
+      assert.equal(rangerSeries[0].createdTotal, 5);
+      assert.equal(footmanSeries[0].createdTotal, 3);
+    } finally {
+      const restore = (id, prev) => prev ? pbgidUnitsMap.set(id, prev) : pbgidUnitsMap.delete(id);
+      restore(2075743, previousPlural);
+      restore(2122538, previousSingular);
+      restore(2122352, previousPluralFoot);
+      restore(2122350, previousSingularFoot);
+    }
+  });
+
   test('preserves upgrade timestamps sorted ascending', () => {
     const player = {
       name: 'P1',
