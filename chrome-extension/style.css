@@ -65,9 +65,9 @@
 
 .aoe4-army-unit-row {
   display: grid;
-  grid-template-columns: 1.35rem minmax(0, 1fr) 3ch 4ch 4ch;
+  grid-template-columns: 1.35rem minmax(0, 1fr) minmax(6.5ch, max-content) minmax(5.75ch, max-content) minmax(5.75ch, max-content);
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.45rem;
   min-height: 1.35rem;
   padding: 0.08rem 0.35rem;
   border-radius: 0.3rem;
@@ -119,6 +119,7 @@
   text-align: right;
   font-size: 0.76rem;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
   color: rgba(203, 213, 225, 0.82);
 }
 
@@ -128,6 +129,7 @@
   font-size: 0.74rem;
   font-variant-numeric: tabular-nums;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .aoe4-army-unit-delta-trained {

@@ -258,15 +258,25 @@ async function dragSelectMostOfChart() {
       const rows = [...document.querySelectorAll('.aoe4-legend-breakdown[data-player-name="spartain"] .aoe4-army-unit-row')]
         .filter(row => getComputedStyle(row).display !== 'none')
         .map(row => {
+          const totalEl = row.querySelector('.aoe4-army-unit-total');
+          const trainedEl = row.querySelector('.aoe4-army-unit-delta-trained');
+          const lostEl = row.querySelector('.aoe4-army-unit-delta-lost');
           const trained = row.querySelector('.aoe4-army-unit-delta-trained')?.textContent?.trim() || '';
           const lost = row.querySelector('.aoe4-army-unit-delta-lost')?.textContent?.trim() || '';
           const toNumber = value => Number(value.replace(/,/g, '')) || 0;
+          const rect = el => {
+            const r = el?.getBoundingClientRect?.();
+            return r ? { left: r.left, right: r.right, width: r.width } : null;
+          };
           return {
             text: (row.textContent || '').replace(/\s+/g, ' ').trim(),
             trained,
             lost,
             trainedNumber: toNumber(trained),
             lostNumber: toNumber(lost),
+            totalRect: rect(totalEl),
+            trainedRect: rect(trainedEl),
+            lostRect: rect(lostEl),
           };
         });
       return {
@@ -282,6 +292,12 @@ async function dragSelectMostOfChart() {
       resourceDeltaRows.some(row => /Mohe Tribesman|Iron Pagoda/.test(row.text)),
       `expected Jin override-unit row to show resource deltas, got: ${JSON.stringify(resourceDeltaRows)}`,
     );
+    const overlapping = resourceDeltaRows.filter(row =>
+      !row.totalRect || !row.trainedRect || !row.lostRect ||
+      row.totalRect.right > row.trainedRect.left ||
+      row.trainedRect.right > row.lostRect.left
+    );
+    assert(overlapping.length === 0, `resource legend numeric columns overlap: ${JSON.stringify(overlapping)}`);
   });
 
   await teardown();
