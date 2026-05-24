@@ -259,6 +259,10 @@ describe('buildArmySeriesForPlayer', () => {
       assert.deepEqual([...knight._countValues], [0, 1, 2, 1], 'count-mode unchanged');
       assert.deepEqual([...knight._valueValues], [0, 240, 480, 240], 'value-mode uses bundled cost (240/knight)');
       assert.equal(knight._valueTotal, 480, '2 trains * 240 res');
+      assert.deepEqual([...knight._finishedTimes], [10, 30], 'finished times sorted for range stats');
+      assert.deepEqual([...knight._finishedCosts], [240, 240], 'finished costs align with sorted times');
+      assert.deepEqual([...knight._destroyedTimes], [50], 'destroyed times sorted for range stats');
+      assert.deepEqual([...knight._destroyedCosts], [240], 'destroyed costs align with sorted times');
     } finally {
       if (previousEnglish) unitDataIndex.set('english', previousEnglish);
       else unitDataIndex.delete('english');

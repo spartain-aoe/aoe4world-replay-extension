@@ -64,14 +64,24 @@ export function collapseChartSeries(series: ChartSeries[], limit: number): Chart
   const sorted = [...series].sort((a, b) => maxAbs(b.values) - maxAbs(a.values));
   const keep = sorted.slice(0, limit - 1);
   const rest = sorted.slice(limit - 1);
-  const otherFinished: number[] = [];
-  const otherDestroyed: number[] = [];
+  const otherFinishedEvents: Array<{ time: number; cost: number }> = [];
+  const otherDestroyedEvents: Array<{ time: number; cost: number }> = [];
   for (const item of rest) {
-    if (item._finishedTimes) otherFinished.push(...item._finishedTimes);
-    if (item._destroyedTimes) otherDestroyed.push(...item._destroyedTimes);
+    if (item._finishedTimes) {
+      for (let i = 0; i < item._finishedTimes.length; i++) {
+        otherFinishedEvents.push({ time: item._finishedTimes[i], cost: item._finishedCosts?.[i] || 0 });
+      }
+    }
+    if (item._destroyedTimes) {
+      for (let i = 0; i < item._destroyedTimes.length; i++) {
+        otherDestroyedEvents.push({ time: item._destroyedTimes[i], cost: item._destroyedCosts?.[i] || 0 });
+      }
+    }
   }
-  otherFinished.sort((a, b) => a - b);
-  otherDestroyed.sort((a, b) => a - b);
+  otherFinishedEvents.sort((a, b) => a.time - b.time);
+  otherDestroyedEvents.sort((a, b) => a.time - b.time);
+  const otherFinished = otherFinishedEvents.map(event => event.time);
+  const otherDestroyed = otherDestroyedEvents.map(event => event.time);
   const sampleLen = sorted[0].values.length;
   const sumAtIndex = (key: 'values' | '_countValues' | '_valueValues', index: number): number =>
     rest.reduce((sum, item) => {
@@ -96,6 +106,8 @@ export function collapseChartSeries(series: ChartSeries[], limit: number): Chart
     values: Array.from({ length: sampleLen }, (_, i) => sumAtIndex('values', i)),
     _finishedTimes: otherFinished,
     _destroyedTimes: otherDestroyed,
+    _finishedCosts: otherFinishedEvents.map(event => event.cost),
+    _destroyedCosts: otherDestroyedEvents.map(event => event.cost),
   };
   if (otherCountValues) otherSeries._countValues = otherCountValues;
   if (otherValueValues) otherSeries._valueValues = otherValueValues;

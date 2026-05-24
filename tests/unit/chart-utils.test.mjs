@@ -101,8 +101,26 @@ describe('collapseChartSeries', () => {
     const series = [
       mkSeries('A', [10, 10], { _countValues: [10, 10], _valueValues: [1000, 1000], _valueTotal: 2000, createdTotal: 10 }),
       mkSeries('B', [8, 8], { _countValues: [8, 8], _valueValues: [800, 800], _valueTotal: 1600, createdTotal: 8 }),
-      mkSeries('C', [2, 2], { _countValues: [2, 2], _valueValues: [200, 200], _valueTotal: 400, createdTotal: 2 }),
-      mkSeries('D', [1, 1], { _countValues: [1, 1], _valueValues: [100, 100], _valueTotal: 200, createdTotal: 1 }),
+      mkSeries('C', [2, 2], {
+        _countValues: [2, 2],
+        _valueValues: [200, 200],
+        _valueTotal: 400,
+        createdTotal: 2,
+        _finishedTimes: [30, 10],
+        _finishedCosts: [80, 120],
+        _destroyedTimes: [40],
+        _destroyedCosts: [120],
+      }),
+      mkSeries('D', [1, 1], {
+        _countValues: [1, 1],
+        _valueValues: [100, 100],
+        _valueTotal: 200,
+        createdTotal: 1,
+        _finishedTimes: [20],
+        _finishedCosts: [100],
+        _destroyedTimes: [35],
+        _destroyedCosts: [100],
+      }),
     ];
     const out = collapseChartSeries(series, 3);
     const other = out.find(s => s.label === 'Other');
@@ -111,6 +129,10 @@ describe('collapseChartSeries', () => {
     assert.deepEqual([...other._valueValues], [300, 300], 'value arrays summed');
     assert.equal(other._valueTotal, 600, 'value totals summed');
     assert.equal(other.createdTotal, 3, 'createdTotal summed');
+    assert.deepEqual([...other._finishedTimes], [10, 20, 30], 'finished events sorted');
+    assert.deepEqual([...other._finishedCosts], [120, 100, 80], 'finished costs stay aligned with sorted event times');
+    assert.deepEqual([...other._destroyedTimes], [35, 40], 'destroyed events sorted');
+    assert.deepEqual([...other._destroyedCosts], [100, 120], 'destroyed costs stay aligned with sorted event times');
   });
 
   test('Other has no _countValues/_valueValues when none of the rest had them', () => {

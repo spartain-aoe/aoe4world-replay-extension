@@ -349,10 +349,10 @@ function ensureBuildOrderObserver(timeline: TimelineElements): void {
 
 function buildTimelineChartCatalog(summary: GameSummary, nativeColors: Map<string, string>, nativePlayerOrder: string[] = []): Chart[] {
   const charts = ([] as Chart[])
-    .concat(buildResourceGatheredCharts(summary, nativeColors) as Chart[])
     .concat(buildArmyCharts(summary, nativeColors, nativePlayerOrder) as Chart[])
     .concat(buildArmyValueLeadCharts(summary, nativeColors, nativePlayerOrder) as Chart[])
-    .concat(buildDestroyedValueCharts(summary, nativeColors, nativePlayerOrder) as Chart[]);
+    .concat(buildDestroyedValueCharts(summary, nativeColors, nativePlayerOrder) as Chart[])
+    .concat(buildResourceGatheredCharts(summary, nativeColors) as Chart[]);
   const ageUps = extractAgeUps(summary, nativeColors) as AgeUp[];
   for (const chart of charts) {
     if (chart.type === 'army') precomputeStackedValues(chart.data.series);

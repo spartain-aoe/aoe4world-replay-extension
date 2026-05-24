@@ -568,6 +568,52 @@ describe('applyRangeLegend', () => {
     assert.ok(Number(totalEl.textContent) + Number(deltaTrainedEl.textContent) - Number(deltaLostEl.textContent) >= 0);
   });
 
+  test('value-mode range legend uses resource-weighted trained/lost deltas', () => {
+    const chart = makeChart('army', 'army', [0, 10, 20, 30]);
+    chart.options = { armyMode: 'value' };
+    const rowEl = doc.createElement('tr');
+    const totalEl = doc.createElement('td');
+    const deltaTrainedEl = doc.createElement('td');
+    const deltaLostEl = doc.createElement('td');
+    const node = { rowEl, totalEl, deltaTrainedEl, deltaLostEl };
+    const unit = {
+      key: 'iron-pagoda',
+      playerName: 'P1',
+      _hidden: false,
+      // At t=10, one 1,000-resource unit is already alive. During (10,30],
+      // two 240-resource units finish and one 240-resource unit dies.
+      values: [0, 1000, 1240, 1240],
+      _finishedTimes: [5, 15, 25],
+      _finishedCosts: [1000, 240, 240],
+      _destroyedTimes: [20],
+      _destroyedCosts: [240],
+      unitLabel: 'Iron Pagoda',
+      label: 'Iron Pagoda',
+    };
+    const summaryLabelEl = doc.createElement('td');
+    chart._legendNodes = new Map([
+      ['iron-pagoda', node],
+      ['__summary__P1', {
+        panelEl: { style: { display: '' } },
+        summaryLabelEl,
+        units: [unit],
+      }],
+    ]);
+    chart.data.series = [unit];
+    const timeline = makeTimeline(doc);
+    timeline.chartBox.__aoe4ActiveRange = { chartValue: 'army', startIdx: 1, endIdx: 3 };
+
+    applyRangeLegend(chart, timeline);
+
+    assert.equal(rowEl.style.display, '');
+    assert.equal(totalEl.textContent, '1,000');
+    assert.equal(deltaTrainedEl.textContent, '480');
+    assert.equal(deltaLostEl.textContent, '240');
+    assert.match(summaryLabelEl.innerHTML, /Iron Pagoda/);
+    assert.match(summaryLabelEl.innerHTML, /480/);
+    assert.match(summaryLabelEl.innerHTML, /240/);
+  });
+
   test('skips series item with no key', () => {
     const chart = makeChart('army', 'army', [0, 10, 20]);
     chart._legendNodes = new Map([['unit1', {}]]);

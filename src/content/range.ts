@@ -96,21 +96,47 @@ export function countAfterStartInRange(sortedTimes: number[] | undefined, t0: nu
   return lo - start;
 }
 
+function weightedAfterStartInRange(
+  sortedTimes: number[] | undefined,
+  sortedWeights: number[] | undefined,
+  t0: number,
+  t1: number,
+): number {
+  if (!sortedTimes?.length) return 0;
+  let total = 0;
+  for (let i = 0; i < sortedTimes.length; i++) {
+    const time = sortedTimes[i];
+    if (time <= t0) continue;
+    if (time > t1) break;
+    total += sortedWeights?.[i] || 0;
+  }
+  return total;
+}
+
+function formatRangeNumber(value: number): string {
+  return Math.round(value).toLocaleString();
+}
+
 function activeValueAt(item: { values?: number[] }, index: number): number {
   return Math.max(0, Math.round(Math.abs(item.values?.[index] || 0)));
 }
 
 function rangeUnitStats(
-  item: { values?: number[]; _finishedTimes?: number[]; _destroyedTimes?: number[] },
+  item: { values?: number[]; _finishedTimes?: number[]; _destroyedTimes?: number[]; _finishedCosts?: number[]; _destroyedCosts?: number[] },
   startIdx: number,
   endIdx: number,
   t0: number,
   t1: number,
+  valueMode = false,
 ): { initial: number; end: number; trained: number; lost: number; relevant: boolean } {
   const initial = activeValueAt(item, startIdx);
   const end = activeValueAt(item, endIdx);
-  const trained = countAfterStartInRange(item._finishedTimes, t0, t1);
-  const rawLost = countAfterStartInRange(item._destroyedTimes, t0, t1);
+  const trained = valueMode
+    ? Math.round(weightedAfterStartInRange(item._finishedTimes, item._finishedCosts, t0, t1))
+    : countAfterStartInRange(item._finishedTimes, t0, t1);
+  const rawLost = valueMode
+    ? Math.round(weightedAfterStartInRange(item._destroyedTimes, item._destroyedCosts, t0, t1))
+    : countAfterStartInRange(item._destroyedTimes, t0, t1);
   const inferredLost = Math.max(0, initial + trained - end);
   const maxPossibleLost = initial + trained;
   const lost = Math.min(maxPossibleLost, Math.max(rawLost, inferredLost));
@@ -198,6 +224,7 @@ export function applyRangeLegend(chart: Chart, timeline: TimelineElements | null
     resetLegendSummary(chart);
     return;
   }
+  const valueMode = chart.options?.armyMode === 'value';
 
   const expandedPlayers = new Set<string>();
   for (const [key, meta] of nodes) {
@@ -214,14 +241,14 @@ export function applyRangeLegend(chart: Chart, timeline: TimelineElements | null
       continue;
     }
     if (!item.playerName || !expandedPlayers.has(item.playerName)) continue;
-    const stats = rangeUnitStats(item, range.startIdx, range.endIdx, t0, t1);
+    const stats = rangeUnitStats(item, range.startIdx, range.endIdx, t0, t1, valueMode);
     if (!stats.relevant) {
       node.rowEl.style.display = 'none';
       continue;
     }
     node.rowEl.style.display = '';
     node.rowEl.classList.remove('is-closest');
-    const totalText = String(stats.initial);
+    const totalText = formatRangeNumber(stats.initial);
     if (node.totalEl.textContent !== totalText) node.totalEl.textContent = totalText;
     setDeltaCells(node, stats.trained, stats.lost);
   }
@@ -230,14 +257,14 @@ export function applyRangeLegend(chart: Chart, timeline: TimelineElements | null
     if (!isSummaryNode(key, meta)) continue;
     const parts: string[] = [];
     for (const unit of meta.units) {
-      const stats = rangeUnitStats(unit, range.startIdx, range.endIdx, t0, t1);
+      const stats = rangeUnitStats(unit, range.startIdx, range.endIdx, t0, t1, valueMode);
       if (!stats.relevant) continue;
       const label = escapeHtml(unit.unitLabel || unit.label || '');
       parts.push(
         `<span class="aoe4-inline-summary-entry">` +
           `${label} ` +
-          `<span class="aoe4-army-unit-delta-trained ${stats.trained === 0 ? 'is-zero' : ''}">${stats.trained}</span> ` +
-          `<span class="aoe4-army-unit-delta-lost ${stats.lost === 0 ? 'is-zero' : ''}">${stats.lost}</span>` +
+          `<span class="aoe4-army-unit-delta-trained ${stats.trained === 0 ? 'is-zero' : ''}">${formatRangeNumber(stats.trained)}</span> ` +
+          `<span class="aoe4-army-unit-delta-lost ${stats.lost === 0 ? 'is-zero' : ''}">${formatRangeNumber(stats.lost)}</span>` +
         `</span>`
       );
     }

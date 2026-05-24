@@ -46,8 +46,10 @@ function makeArmyChart() {
       labels: [0, 30, 60, 90, 120],
       series: [
         {
+          key: 'knight',
           label: 'Knight',
           color: '#4dabf7',
+          createdTotal: 2,
           values: [0, 1, 2, 2, 1],
           _countValues: [0, 1, 2, 2, 1],
           _valueValues: [0, 200, 400, 400, 200],
@@ -55,8 +57,10 @@ function makeArmyChart() {
           _sign: 1,
         },
         {
+          key: 'spearman',
           label: 'Spearman',
           color: '#74c0fc',
+          createdTotal: 4,
           values: [0, 2, 4, 4, 4],
           _countValues: [0, 2, 4, 4, 4],
           _valueValues: [0, 120, 240, 240, 240],
@@ -75,6 +79,30 @@ function makeTimelineElements(document) {
   document.body.appendChild(chartBox);
   chartBox.appendChild(canvas);
   return { chartBox, canvas };
+}
+
+function attachLegendNodes(document, chart) {
+  const knightTotal = document.createElement('span');
+  knightTotal.textContent = '2';
+  const spearTotal = document.createElement('span');
+  spearTotal.textContent = '4';
+  chart._legendNodes = new Map([
+    ['knight', {
+      totalEl: knightTotal,
+      deltaTrainedEl: document.createElement('span'),
+      deltaLostEl: document.createElement('span'),
+      rowEl: document.createElement('div'),
+      summaryTotal: 2,
+    }],
+    ['spearman', {
+      totalEl: spearTotal,
+      deltaTrainedEl: document.createElement('span'),
+      deltaLostEl: document.createElement('span'),
+      rowEl: document.createElement('div'),
+      summaryTotal: 4,
+    }],
+  ]);
+  return { knightTotal, spearTotal };
 }
 
 describe('army-mode toggle UI', () => {
@@ -101,6 +129,7 @@ describe('army-mode toggle UI', () => {
     const { document } = makeDomGlobals();
     const chart = makeArmyChart();
     const timeline = makeTimelineElements(document);
+    const legend = attachLegendNodes(document, chart);
     renderArmyModeToggle(timeline, chart);
 
     // sanity: starts in count mode (default)
@@ -120,6 +149,8 @@ describe('army-mode toggle UI', () => {
     const countBtn = Array.from(timeline.chartBox.querySelectorAll('.aoe4-army-mode-toggle-btn'))
       .find(b => b.dataset.mode === 'count');
     assert.equal(countBtn.getAttribute('aria-pressed'), 'false', 'count button unpressed');
+    assert.equal(legend.knightTotal.textContent, '400 res', 'legend total updated to value');
+    assert.equal(legend.spearTotal.textContent, '240 res', 'second legend total updated to value');
   });
 
   test('clicking Count swaps back to _countValues', () => {
@@ -127,6 +158,7 @@ describe('army-mode toggle UI', () => {
     const chart = makeArmyChart();
     chart.options.armyMode = 'value';
     const timeline = makeTimelineElements(document);
+    const legend = attachLegendNodes(document, chart);
     renderArmyModeToggle(timeline, chart);
 
     // After render, mode should be applied as value (since chart.options had it)
@@ -138,6 +170,8 @@ describe('army-mode toggle UI', () => {
 
     assert.equal(chart.options.armyMode, 'count');
     assert.equal(chart.data.series[0].values, chart.data.series[0]._countValues);
+    assert.equal(legend.knightTotal.textContent, '2', 'legend total restored to count');
+    assert.equal(legend.spearTotal.textContent, '4', 'second legend total restored to count');
   });
 
   test('detachArmyModeToggle removes the toggle from chartBox', () => {
@@ -183,10 +217,12 @@ describe('army-mode toggle UI', () => {
     const chart = makeArmyChart();
     chart.options = { height: 280 };
     const timeline = makeTimelineElements(document);
+    const legend = attachLegendNodes(document, chart);
     renderArmyModeToggle(timeline, chart);
 
     assert.equal(chart.options.armyMode, 'value', 'restored from storage');
     assert.equal(chart.data.series[0].values, chart.data.series[0]._valueValues);
+    assert.equal(legend.knightTotal.textContent, '400 res');
 
     setActiveArmyMode('count');
   });

@@ -144,14 +144,14 @@ describe('buildResourceGatheredCharts special resources', () => {
           civilizationAttrib: 'byzantine',
           resources: {
             timestamps: [0, 20],
-            food: [0, 0],
-            foodGathered: [0, 0],
-            wood: [0, 0],
-            woodGathered: [0, 0],
-            gold: [0, 0],
-            goldGathered: [0, 0],
-            stone: [0, 0],
-            stoneGathered: [0, 0],
+            food: [0, 1],
+            foodGathered: [0, 9],
+            wood: [0, 2],
+            woodGathered: [0, 18],
+            gold: [0, 3],
+            goldGathered: [0, 27],
+            stone: [0, 4],
+            stoneGathered: [0, 36],
             oliveoil: [0, 1],
             oliveoilGathered: [0, 2],
           },
@@ -188,5 +188,18 @@ describe('buildResourceGatheredCharts special resources', () => {
     assert.equal(silver.data.series.length, 1);
     assert.equal(silver.data.series[0].label, 'Macedonian');
     assert.deepEqual(silver.data.series[0].values, [0, 10]);
+    assert.deepEqual(
+      charts.map(chart => chart.value.replace(/^aoe4plus:/, '')),
+      [
+        'resources-gathered-total',
+        'resources-gathered-food',
+        'resources-gathered-wood',
+        'resources-gathered-gold',
+        'resources-gathered-stone',
+        'resources-gathered-oliveoil',
+        'resources-gathered-silver',
+      ],
+      'resource charts keep Total first and special resources after base resources that have data',
+    );
   });
 });

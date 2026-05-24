@@ -63,6 +63,21 @@ export function chartHasValueData(chart: Chart): boolean {
   return false;
 }
 
+function refreshArmyLegendTotals(chart: Chart, mode: ArmyMode): void {
+  const nodes = chart._legendNodes;
+  if (!nodes) return;
+  for (const series of chart.data.series as ChartSeries[]) {
+    if (!series.key) continue;
+    const node = nodes.get(series.key);
+    if (!node || series.key.startsWith('__summary__') || !('totalEl' in node)) continue;
+    const total = mode === 'value'
+      ? `${Math.round(series._valueTotal || 0).toLocaleString()} res`
+      : Math.round(series.createdTotal || 0).toLocaleString();
+    if (node.totalEl.textContent !== total) node.totalEl.textContent = total;
+    node.summaryTotal = mode === 'value' ? (series._valueTotal || 0) : (series.createdTotal || 0);
+  }
+}
+
 const TOGGLE_CLASS = 'aoe4-army-mode-toggle';
 
 export function detachArmyModeToggle(timeline: TimelineElements): void {
@@ -86,6 +101,7 @@ export function renderArmyModeToggle(timeline: TimelineElements, chart: Chart): 
     ? chart.options.armyMode as ArmyMode
     : getActiveArmyMode();
   applyArmyModeToChart(chart, initialMode);
+  refreshArmyLegendTotals(chart, initialMode);
 
   const container = document.createElement('div');
   container.className = TOGGLE_CLASS;
@@ -117,6 +133,7 @@ export function renderArmyModeToggle(timeline: TimelineElements, chart: Chart): 
     valueBtn.setAttribute('aria-pressed', String(mode === 'value'));
     setActiveArmyMode(mode);
     applyArmyModeToChart(chart, mode);
+    refreshArmyLegendTotals(chart, mode);
     drawTimelineCanvasChart(timeline.canvas, chart);
   };
 

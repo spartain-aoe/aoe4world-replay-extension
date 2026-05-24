@@ -44,6 +44,15 @@ type FindUnitGroupForUpgrade = (
 const findUnitGroupForUpgradeTyped = findUnitGroupForUpgrade as unknown as FindUnitGroupForUpgrade;
 const collapseChartSeriesTyped = collapseChartSeries as (series: ChartSeries[], limit: number) => ChartSeries[];
 
+function sortedEventPairs(times: number[], costs: number[]): { times: number[]; costs: number[] } {
+  const pairs = times.map((time, index) => ({ time, cost: costs[index] || 0 }))
+    .sort((a, b) => a.time - b.time);
+  return {
+    times: pairs.map(pair => pair.time),
+    costs: pairs.map(pair => pair.cost),
+  };
+}
+
 // Normalizes a unit display label to a singular merge-key so plural variants
 // (e.g. "Wynguard Rangers" -> "wynguard ranger", "Wynguard Footmen" -> "wynguard footman")
 // collapse onto their singular counterpart in the final series list.
@@ -209,8 +218,10 @@ export function buildArmySeriesForPlayer(player: PlayerSummary, labels: number[]
       const baseCands = unitIconCandidates(events.icon, events.label, player, events.pbgid);
       const iconCands = pbgidData?.icon ? [pbgidData.icon, ...baseCands] : baseCands;
       if (fromPbgid?.i && !iconCands.includes(fromPbgid.i)) iconCands.unshift(fromPbgid.i);
-      const finishedTimes = events.finished.slice().sort((a: number, b: number) => a - b);
-      const destroyedTimes = events.destroyed.slice().sort((a: number, b: number) => a - b);
+      const finishedEvents = sortedEventPairs(events.finished, events.finishedCosts);
+      const destroyedEvents = sortedEventPairs(events.destroyed, events.destroyedCosts);
+      const finishedTimes = finishedEvents.times;
+      const destroyedTimes = destroyedEvents.times;
       const countValues = activeCountValues(labels, events.finished, events.destroyed);
       const valueValues = activeValueValues(labels, events.finished, events.finishedCosts, events.destroyed, events.destroyedCosts);
       const valueTotal = events.finishedCosts.reduce((sum, c) => sum + (c || 0), 0);
@@ -230,6 +241,8 @@ export function buildArmySeriesForPlayer(player: PlayerSummary, labels: number[]
         _valueTotal: valueTotal,
         _finishedTimes: finishedTimes,
         _destroyedTimes: destroyedTimes,
+        _finishedCosts: finishedEvents.costs,
+        _destroyedCosts: destroyedEvents.costs,
       };
     })
     .filter(item => maxAbs(item.values) > 0);

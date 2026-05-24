@@ -115,6 +115,8 @@ export interface ChartSeries {
   playerName?: string;
   _finishedTimes?: number[];
   _destroyedTimes?: number[];
+  _finishedCosts?: number[];
+  _destroyedCosts?: number[];
   _countValues?: number[];
   _valueValues?: number[];
   _valueTotal?: number;
