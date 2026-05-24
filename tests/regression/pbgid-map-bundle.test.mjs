@@ -54,4 +54,13 @@ describe('bundled pbgid-map.json: cost data is present', () => {
       assert.ok(entry.c <= 10000, `pbgid ${pbgid} cost ≤10000 (got ${entry.c})`);
     }
   });
+
+  test('Costs for canonical Jin Iron Pagoda entries are present (rescue base for overrides)', () => {
+    // The Jin Iron Pagoda has many civ/age/biome variant pbgids; not all are
+    // in the upstream units file (e.g. 9004731 only resolves via
+    // pbgid-overrides). The cost-by-key index needs at least one canonical
+    // 'iron-pagoda' entry with a cost so the merge-key fallback succeeds.
+    const ironPagodaEntries = Object.values(payload.units).filter(e => e.k === 'iron-pagoda' && typeof e.c === 'number' && e.c > 0);
+    assert.ok(ironPagodaEntries.length >= 1, `expected ≥1 canonical iron-pagoda entry with cost, got ${ironPagodaEntries.length}`);
+  });
 });

@@ -160,6 +160,12 @@ export function syncRangeUi(timeline: TimelineElements | null, chart: Chart | nu
   const range = getActiveRange(chartBox, chart);
   const isArmy = chart.type === 'army';
   if (btn) btn.style.display = isArmy && range ? '' : 'none';
+  // The army-mode toggle and the range Reset button both anchor to the
+  // top-right of the chart box. Hide the toggle while a range is active so
+  // they don't stack and so the toggle's opaque background doesn't sit on
+  // top of the in-range translucent selection draw.
+  const toggle = timeline.__aoe4ArmyModeToggle as HTMLElement | null | undefined;
+  if (toggle) toggle.style.display = (isArmy && range) ? 'none' : '';
 
   if (isArmy && range) {
     applyRangeLegend(chart, timeline);

@@ -24,6 +24,10 @@ function makeDomGlobals() {
   globalThis.document = document;
   globalThis.HTMLElement = window.HTMLElement;
   globalThis.MouseEvent = window.MouseEvent;
+  globalThis.getComputedStyle = (el) => ({
+    position: (el && el.style && el.style.position) || '',
+    getPropertyValue: () => '',
+  });
   globalThis.localStorage = {
     _data: new Map(),
     getItem(k) { return this._data.has(k) ? this._data.get(k) : null; },
@@ -225,5 +229,63 @@ describe('chartHasValueData', () => {
     const chart = makeArmyChart();
     chart.type = 'resources';
     assert.equal(chartHasValueData(chart), false);
+  });
+});
+
+describe('army-mode toggle: range-selection interaction', () => {
+  test('syncRangeUi hides the toggle while a range is active and restores it when cleared', async () => {
+    const { document } = makeDomGlobals();
+    const chart = makeArmyChart();
+    chart.value = 'army';
+    const chartBox = document.createElement('div');
+    const canvas = document.createElement('canvas');
+    document.body.appendChild(chartBox);
+    chartBox.appendChild(canvas);
+    const timeline = {
+      chartBox,
+      canvas,
+      select: { __aoe4SummaryActiveValue: 'army', __aoe4SummaryCharts: new Map([['army', chart]]) },
+      __aoe4Summary: { players: [] },
+    };
+
+    renderArmyModeToggle(timeline, chart);
+    const toggle = timeline.__aoe4ArmyModeToggle;
+    assert.ok(toggle, 'toggle present after render');
+    assert.notEqual(toggle.style.display, 'none', 'toggle visible initially');
+
+    const { syncRangeUi, clearRangeState } = await import('../../src/content/range.ts');
+
+    chartBox.__aoe4ActiveRange = { chartValue: 'army', startIdx: 1, endIdx: 3 };
+    syncRangeUi(timeline, chart);
+    assert.equal(toggle.style.display, 'none', 'toggle hidden while range active');
+
+    clearRangeState(chartBox);
+    syncRangeUi(timeline, chart);
+    assert.notEqual(toggle.style.display, 'none', 'toggle visible again after range cleared');
+  });
+
+  test('syncRangeUi leaves toggle untouched on non-army charts', async () => {
+    const { document } = makeDomGlobals();
+    const chart = makeArmyChart();
+    chart.value = 'army';
+    const otherChart = { type: 'resources', value: 'resources', data: { labels: [], series: [] }, options: {} };
+    const chartBox = document.createElement('div');
+    const canvas = document.createElement('canvas');
+    document.body.appendChild(chartBox);
+    chartBox.appendChild(canvas);
+    const timeline = {
+      chartBox,
+      canvas,
+      select: { __aoe4SummaryActiveValue: 'resources', __aoe4SummaryCharts: new Map() },
+      __aoe4Summary: { players: [] },
+    };
+
+    renderArmyModeToggle(timeline, chart);
+    const toggle = timeline.__aoe4ArmyModeToggle;
+    toggle.style.display = '';
+
+    const { syncRangeUi } = await import('../../src/content/range.ts');
+    syncRangeUi(timeline, otherChart);
+    assert.notEqual(toggle.style.display, 'none', 'unchanged when active chart is non-army with no range');
   });
 });

@@ -5,6 +5,7 @@ import {
   resolveUnitByPbgid,
   resolveTechByPbgid,
   resolveUpgradeByPbgid,
+  lookupCostByMergeKey,
 } from './pbgid-map.ts';
 import {
   civDataSlugForPlayer,
@@ -36,17 +37,22 @@ export function unitCostTotal(unitData: UnitDataEntry | null | undefined): numbe
 }
 
 // Resolve a unit's training cost, preferring the per-civ unit-data cache (which
-// can include variation-specific overrides) and falling back to the cost field
-// bundled with `pbgid-map.json`. The bundled fallback ensures Value-mode charts
-// populate even when the async unit-data fetch hasn't completed (or returned
-// empty, since the cache is opportunistically populated and may be empty on a
-// fresh install).
+// can include variation-specific overrides) and falling back through:
+//   1. The `c` field on the pbgid-map entry (covers most units directly).
+//   2. The cost-by-mergekey index (rescues pbgids that only resolve via
+//      `pbgid-overrides.ts` — those entries carry display info but no cost —
+//      and fresh pbgids missing from `units/all-optimized.json` altogether).
+// Both fallbacks ensure Value-mode charts populate even when the async
+// unit-data fetch hasn't completed (or returned empty, since the cache is
+// opportunistically populated and may be empty on a fresh install).
 export function unitCostForItem(item: BuildOrderItem, player: PlayerSummary | null): number {
   const unitData = lookupUnitDataByPbgid(item.pbgid, player) || lookupUnitDataForIcon(item.icon, player);
   const fromData = unitCostTotal(unitData);
   if (fromData > 0) return fromData;
-  const pbgidCost = resolveUnitByPbgid(item.pbgid)?.c;
-  return typeof pbgidCost === 'number' && pbgidCost > 0 ? pbgidCost : 0;
+  const pbgidEntry = resolveUnitByPbgid(item.pbgid);
+  if (typeof pbgidEntry?.c === 'number' && pbgidEntry.c > 0) return pbgidEntry.c;
+  const key = pbgidEntry?.k || unitMergeKey(item.icon, item.pbgid ?? null);
+  return lookupCostByMergeKey(key);
 }
 
 export function unitMergeKey(icon: string | null | undefined, pbgid: number | null = null): string {
