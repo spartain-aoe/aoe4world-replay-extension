@@ -35,6 +35,20 @@ export function unitCostTotal(unitData: UnitDataEntry | null | undefined): numbe
     .reduce((sum, key) => sum + (Number(costs[key]) || 0), 0);
 }
 
+// Resolve a unit's training cost, preferring the per-civ unit-data cache (which
+// can include variation-specific overrides) and falling back to the cost field
+// bundled with `pbgid-map.json`. The bundled fallback ensures Value-mode charts
+// populate even when the async unit-data fetch hasn't completed (or returned
+// empty, since the cache is opportunistically populated and may be empty on a
+// fresh install).
+export function unitCostForItem(item: BuildOrderItem, player: PlayerSummary | null): number {
+  const unitData = lookupUnitDataByPbgid(item.pbgid, player) || lookupUnitDataForIcon(item.icon, player);
+  const fromData = unitCostTotal(unitData);
+  if (fromData > 0) return fromData;
+  const pbgidCost = resolveUnitByPbgid(item.pbgid)?.c;
+  return typeof pbgidCost === 'number' && pbgidCost > 0 ? pbgidCost : 0;
+}
+
 export function unitMergeKey(icon: string | null | undefined, pbgid: number | null = null): string {
   const fromPbgid = resolveUnitByPbgid(pbgid);
   if (fromPbgid?.k) return fromPbgid.k;

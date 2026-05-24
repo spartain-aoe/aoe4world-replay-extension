@@ -86,14 +86,14 @@ describe('army-mode toggle UI', () => {
     const buttons = toggle.querySelectorAll('.aoe4-army-mode-toggle-btn');
     assert.equal(buttons.length, 2, 'two buttons');
     const labels = Array.from(buttons).map(b => b.textContent.trim());
-    assert.ok(labels.includes('# Units'), 'has count label');
-    assert.ok(labels.includes('$ Value'), 'has value label');
+    assert.ok(labels.includes('Count'), 'has count label');
+    assert.ok(labels.includes('Value'), 'has value label');
     assert.equal(toggle.getAttribute('role'), 'group');
     assert.equal(timeline.chartBox.style.position, 'relative', 'chartBox positioned relative for absolute child');
     assert.equal(timeline.__aoe4ArmyModeToggle, toggle, 'stored on timeline');
   });
 
-  test('clicking $ Value swaps series.values to _valueValues and flips chart.options.armyMode', () => {
+  test('clicking Value swaps series.values to _valueValues and flips chart.options.armyMode', () => {
     const { document } = makeDomGlobals();
     const chart = makeArmyChart();
     const timeline = makeTimelineElements(document);
@@ -118,7 +118,7 @@ describe('army-mode toggle UI', () => {
     assert.equal(countBtn.getAttribute('aria-pressed'), 'false', 'count button unpressed');
   });
 
-  test('clicking # Units swaps back to _countValues', () => {
+  test('clicking Count swaps back to _countValues', () => {
     const { document } = makeDomGlobals();
     const chart = makeArmyChart();
     chart.options.armyMode = 'value';

@@ -238,6 +238,35 @@ describe('buildArmySeriesForPlayer', () => {
     }
   });
 
+  test('_valueValues populates from bundled pbgidUnitsMap cost when unit-data cache is empty', () => {
+    const FALLBACK_PBGID = 991234;
+    const previousEnglish = unitDataIndex.get('english');
+    const previousPbgid = pbgidUnitsMap.get(FALLBACK_PBGID);
+    unitDataIndex.delete('english');
+    pbgidUnitsMap.set(FALLBACK_PBGID, { n: 'Knight', k: 'knight', c: 240 });
+    try {
+      const player = {
+        name: 'P1',
+        civilization: 'english',
+        buildOrder: [
+          { id: 'k1', type: 'Unit', icon: 'units/knight', pbgid: FALLBACK_PBGID, finished: [10, 30], destroyed: [50] },
+        ],
+      };
+      const labels = [0, 20, 40, 60];
+      const result = buildArmySeriesForPlayer(player, labels, '#4dabf7');
+      const knight = result.find(s => s.mergeKey === 'knight');
+      assert.ok(knight, 'knight series present');
+      assert.deepEqual([...knight._countValues], [0, 1, 2, 1], 'count-mode unchanged');
+      assert.deepEqual([...knight._valueValues], [0, 240, 480, 240], 'value-mode uses bundled cost (240/knight)');
+      assert.equal(knight._valueTotal, 480, '2 trains * 240 res');
+    } finally {
+      if (previousEnglish) unitDataIndex.set('english', previousEnglish);
+      else unitDataIndex.delete('english');
+      if (previousPbgid) pbgidUnitsMap.set(FALLBACK_PBGID, previousPbgid);
+      else pbgidUnitsMap.delete(FALLBACK_PBGID);
+    }
+  });
+
   test('preserves upgrade timestamps sorted ascending', () => {
     const player = {
       name: 'P1',

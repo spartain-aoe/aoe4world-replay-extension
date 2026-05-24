@@ -93,7 +93,7 @@ export interface ReplayPlayer {
 export interface PbgidEntry {
   n: string;
   i?: string;
-  c?: string;
+  c?: number;
   k?: string;
   b?: string;
   u?: number;

@@ -107,8 +107,8 @@ export function renderArmyModeToggle(timeline: TimelineElements, chart: Chart): 
     return btn;
   };
 
-  const countBtn = makeButton('count', '# Units', 'Show active unit counts');
-  const valueBtn = makeButton('value', '$ Value', 'Show active resource value (food+wood+gold+stone)');
+  const countBtn = makeButton('count', 'Count', 'Show active unit counts');
+  const valueBtn = makeButton('value', 'Value', 'Show active resource value (food+wood+gold+stone)');
   container.append(countBtn, valueBtn);
 
   const setMode = (mode: ArmyMode): void => {

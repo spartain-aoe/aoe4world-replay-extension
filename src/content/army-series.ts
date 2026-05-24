@@ -1,14 +1,14 @@
 import { normalizeName } from './dom.ts';
 import { shadeColor } from './colors.ts';
 import { resolveUnitByPbgid } from './pbgid-map.ts';
-import { lookupUnitDataByPbgid, lookupUnitDataForIcon } from './unit-data-cache.ts';
+import { lookupUnitDataByPbgid } from './unit-data-cache.ts';
 import {
   isArmyUnit,
   unitMergeKey,
   unitLabel,
   unitLabelBase,
   unitIconCandidates,
-  unitCostTotal,
+  unitCostForItem,
   findUnitGroupForUpgrade,
 } from './unit-mapping.ts';
 import {
@@ -153,8 +153,7 @@ export function buildArmySeriesForPlayer(player: PlayerSummary, labels: number[]
       group.label = unitLabelBase(key, item.icon, player, item.pbgid);
     }
 
-    const unitData = lookupUnitDataByPbgid(item.pbgid, player) || lookupUnitDataForIcon(item.icon, player);
-    const cost = unitCostTotal(unitData);
+    const cost = unitCostForItem(item, player);
     const finishedTimes = [...numericArray(item.finished), ...numericArray(item.transformed)];
     const destroyedTimes = numericArray(item.destroyed);
     group.finished.push(...finishedTimes);
