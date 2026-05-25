@@ -193,6 +193,14 @@ async function moveMouseToCanvasCenter() {
 async function assertChartStillAnimatingAfterTrustedHover(valuePart, label) {
   const selectedValue = await selectSummaryChartByValuePart(valuePart);
   assert(selectedValue, `could not select ${label}`);
+  await page.waitForFunction((needle) => {
+    const select = document.querySelector('select');
+    const canvas = document.querySelector('canvas[data-aoe4-summary-canvas]');
+    const heading = [...document.querySelectorAll('h3')]
+      .map(h => h.textContent || '')
+      .find(text => text.includes('Army') || text.includes('Resource') || text.includes('Gathered')) || '';
+    return select?.value?.includes(needle) && canvas && heading && !heading.includes('Timeline');
+  }, valuePart, { timeout: 10000 });
   await page.waitForTimeout(20);
   await moveMouseToCanvasCenter();
   await page.waitForTimeout(50);
@@ -367,6 +375,8 @@ function assert(condition, msg) {
   });
 
   await test('trusted hover during Army Composition animation does not snap to final frame', async () => {
+    assert(await selectSummaryChartByValuePart('resources-gathered-total'), 'could not pre-switch to Resources before Army animation test');
+    await page.waitForTimeout(1000);
     await assertChartStillAnimatingAfterTrustedHover('army-composition', 'Army Composition');
   });
 

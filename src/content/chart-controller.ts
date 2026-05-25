@@ -229,6 +229,14 @@ export function tryAddSummaryCharts(): void {
       } else {
         warnReplayColorFailure(gameId, replayColors);
       }
+      await ensurePbgidMap();
+      if (!isCurrentGameRequest(timeline, gameId, routeToken)) {
+        if (timeline.root.dataset.aoe4SummaryPlusPendingUrl === url) {
+          delete timeline.root.dataset.aoe4SummaryPlusPendingUrl;
+        }
+        removeSummaryDefaultGateStyle();
+        return;
+      }
       if (timeline.root.dataset.aoe4SummaryPlusPendingUrl === url) {
         delete timeline.root.dataset.aoe4SummaryPlusPendingUrl;
       }

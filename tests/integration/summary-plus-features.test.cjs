@@ -17,6 +17,9 @@ const { installAoe4WorldFixtureRoutes } = require('./aoe4world-fixtures.cjs');
 const EXT_PATH = path.resolve(__dirname, '..', '..', 'chrome-extension');
 const PROFILE_PATH = path.join(__dirname, '.pw-profile-summary-plus-features');
 const GAME_1V1 = 'https://aoe4world.com/players/24574510-spartain/games/233034826';
+const GAME_NUMUDAN =
+  'https://aoe4world.com/players/9298419-VES-Numudan/games/233854217?sig=1e60a2144fb07369995797e554ded003a2de0145';
+const FIXTURE_ROOT = path.resolve(__dirname, '..', 'fixtures');
 
 let ctx, bg, page;
 let passed = 0;
@@ -255,6 +258,37 @@ async function dragSelectMostOfChart() {
   await page.waitForTimeout(700);
 }
 
+async function installNumudanRoutesWithDelayedPbgidMap(delayMs = 2500) {
+  await page.route('**/data/pbgid-map.json', async (route) => {
+    await new Promise(resolve => setTimeout(resolve, delayMs));
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: fs.readFileSync(path.resolve(EXT_PATH, 'data', 'pbgid-map.json'), 'utf8'),
+    });
+  });
+  await page.route('https://aoe4world.com/players/9298419-VES-Numudan/games/233854217**', async (route) => {
+    const base = fs.readFileSync(path.join(FIXTURE_ROOT, 'pages', 'detail-233034826.html'), 'utf8');
+    const html = base
+      .replace(/233034826/g, '233854217')
+      .replace(/24574510-spartain/g, '9298419-VES-Numudan')
+      .replace(/spartain/g, 'VES Numudan')
+      .replace(/DonationDonation/g, '爱吃小鸡')
+      .replace(
+        '/players/9298419-VES-Numudan/games/233854217/summary?camelize=true',
+        '/players/9298419-VES-Numudan/games/233854217/summary?camelize=true&sig=1e60a2144fb07369995797e554ded003a2de0145',
+      );
+    await route.fulfill({ status: 200, contentType: 'text/html', body: html });
+  });
+  await page.route('https://aoe4world.com/players/9298419-VES-Numudan/games/233854217/summary**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: fs.readFileSync(path.join(FIXTURE_ROOT, 'summary-233854217.json'), 'utf8'),
+    });
+  });
+}
+
 (async () => {
   console.log('\n=== Summary+ Feature Integration ===');
   await setup({
@@ -411,6 +445,44 @@ async function dragSelectMostOfChart() {
     assert(state.selectValue.includes('army-composition'), `synthetic native reset changed select: ${JSON.stringify(state)}`);
     assert(state.heading.includes('Army Composition'), `synthetic native reset changed heading: ${JSON.stringify(state)}`);
     assert(state.hasSummaryCanvas, `synthetic native reset restored native canvas: ${JSON.stringify(state)}`);
+  });
+
+  await test('ArmyComp waits for pbgid-map before showing canonical unit labels', async () => {
+    try {
+      await teardown();
+      await setup({ seedColorCache: false });
+      await installNumudanRoutesWithDelayedPbgidMap(2500);
+      await page.goto(GAME_NUMUDAN, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+      await page.waitForFunction(() => !!document.querySelector('select'), null, { timeout: 10000 });
+      await page.waitForTimeout(1200);
+      const pending = await page.evaluate(() => ({
+        hasSummaryRows: document.querySelectorAll('.flex.items-center.cursor-pointer[data-aoe4-legend-injected="1"]').length,
+        hasSummaryCanvas: !!document.querySelector('canvas[data-aoe4-summary-canvas]'),
+        summaryGate: !!document.getElementById('__aoe4-summary-default-gate'),
+      }));
+      assert(pending.summaryGate, `Summary+ gate should remain while pbgid-map is delayed: ${JSON.stringify(pending)}`);
+      assert(pending.hasSummaryRows === 0 && !pending.hasSummaryCanvas, `ArmyComp rendered before pbgid-map loaded: ${JSON.stringify(pending)}`);
+
+      await page.waitForFunction(() =>
+        [...document.querySelectorAll('.flex.items-center.cursor-pointer[data-aoe4-legend-injected="1"]')]
+          .some(row => (row.textContent || '').includes('Gilded Man-at-Arms')),
+        null,
+        { timeout: 10000 },
+      );
+      const labels = await page.evaluate(() =>
+        [...document.querySelectorAll('.flex.items-center.cursor-pointer[data-aoe4-legend-injected="1"], .aoe4-army-unit-row')]
+          .map(row => (row.textContent || '').replace(/\s+/g, ' ').trim())
+          .join(' | ')
+      );
+      assert(labels.includes('Gilded Man-at-Arms'), `canonical Gilded Man-at-Arms missing: ${labels}`);
+      assert(labels.includes('Man-at-Arms'), `canonical Man-at-Arms missing: ${labels}`);
+      assert(!labels.includes('Gilded Manatarms'), `fallback Gilded Manatarms leaked: ${labels}`);
+      assert(!/\bManatarms\b/.test(labels), `fallback Manatarms leaked: ${labels}`);
+    } finally {
+      await teardown();
+      await setup({ summaryDelayMs: 2000 });
+      await navigate();
+    }
   });
 
   await test('stale hover events immediately after selecting Army Composition do not highlight or stop animation', async () => {
