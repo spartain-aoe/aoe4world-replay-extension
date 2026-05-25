@@ -88,6 +88,20 @@ function removeSummaryDefaultGateStyle(): void {
   document.getElementById(SUMMARY_DEFAULT_GATE_STYLE_ID)?.remove();
 }
 
+function maskNativeArmyOption(timeline: TimelineElements, label: string): void {
+  const option = timeline.select.querySelector<HTMLOptionElement>('option[value="army"]');
+  if (!option) return;
+  if (!option.dataset.aoe4NativeText) option.dataset.aoe4NativeText = option.textContent || 'Army';
+  option.textContent = label;
+}
+
+function restoreNativeArmyOption(timeline: TimelineElements | null | undefined): void {
+  const option = timeline?.select?.querySelector<HTMLOptionElement>('option[value="army"]');
+  if (!option?.dataset.aoe4NativeText) return;
+  option.textContent = option.dataset.aoe4NativeText;
+  delete option.dataset.aoe4NativeText;
+}
+
 function clearActiveSummaryRoute(clearColors = true): void {
   summaryChartUrl = '';
   summaryChartGameId = '';
@@ -98,6 +112,7 @@ function clearActiveSummaryRoute(clearColors = true): void {
 
 function removeSummaryChartsFromTimeline(timeline: TimelineElements | null | undefined): void {
   if (!timeline) return;
+  restoreNativeArmyOption(timeline);
   clearRangeState(timeline.chartBox);
   restoreNativeTimeline(timeline);
   timeline.select.querySelector('optgroup[data-aoe4-summary-plus]')?.remove();
@@ -496,6 +511,7 @@ function handleTimelineMetricEvent(event: Event, timeline: TimelineElements): vo
       syncSelectValue(timeline.select, previousSummaryValue, () => !!timeline.select.__aoe4SummaryCharts?.has(previousSummaryValue));
       return;
     }
+    restoreNativeArmyOption(timeline);
     delete timeline.select.__aoe4SummaryActiveValue;
     restoreNativeTimeline(timeline);
     showNativeAgeUpOverlay(timeline);
@@ -544,13 +560,29 @@ function ensureReplayPlayerColors(timeline: TimelineElements): void {
 
 function syncSelectValue(select: TimelineElements['select'], value: string, isValid: () => boolean): void {
   const apply = (): void => {
-    if (isValid()) select.value = value;
+    if (!isValid()) return;
+    if (value.startsWith('aoe4plus:') && select.__aoe4SummaryActiveValue !== value) return;
+    select.value = value;
   };
   apply();
-  requestAnimationFrame(apply);
+  const startedAt = Date.now();
+  const syncFrame = (): void => {
+    apply();
+    if (
+      value.startsWith('aoe4plus:') &&
+      select.__aoe4SummaryActiveValue === value &&
+      Date.now() - startedAt < 5000
+    ) {
+      requestAnimationFrame(syncFrame);
+    }
+  };
+  requestAnimationFrame(syncFrame);
   setTimeout(apply, 0);
   setTimeout(apply, 150);
   setTimeout(apply, 500);
+  setTimeout(apply, 1000);
+  setTimeout(apply, 2000);
+  setTimeout(apply, 3500);
 }
 
 function ensureSummaryCanvas(timeline: TimelineElements): TimelineElements['canvas'] {
@@ -587,6 +619,7 @@ function renderTimelineMetric(timeline: TimelineElements, chart: Chart): void {
   removeSummaryDefaultGateStyle();
   hideNativeAgeUpOverlay(timeline);
   suppressHoverUntilPointerMove(timeline);
+  maskNativeArmyOption(timeline, chart.title);
   if (!timeline.heading.dataset.aoe4NativeTitle) {
     timeline.heading.dataset.aoe4NativeTitle = timeline.heading.textContent || '';
   }

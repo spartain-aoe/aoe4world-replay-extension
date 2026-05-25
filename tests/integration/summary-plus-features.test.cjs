@@ -89,10 +89,57 @@ async function setup(options = {}) {
   await page.addInitScript(() => {
     window.__aoe4NativeTimelineVisibilitySamples = [];
     window.__aoe4NativeLegendVisibilitySamples = [];
+    window.__aoe4TimelineModeSamples = [];
     const sampleNativeTimeline = () => {
       const select = document.querySelector('select');
       const canvas = document.querySelector('canvas:not([data-aoe4-summary-canvas]):not(.aoe4-ageup-overlay)');
       const summaryReady = !!document.querySelector('optgroup[data-aoe4-summary-plus], canvas[data-aoe4-summary-canvas]');
+      const nativeRows = [...document.querySelectorAll('.flex.items-center.cursor-pointer')]
+        .filter(row => !row.hasAttribute('data-aoe4-legend-injected'))
+        .map(row => {
+          const style = getComputedStyle(row);
+          const rect = row.getBoundingClientRect();
+          return {
+            text: (row.textContent || '').replace(/\s+/g, ' ').trim(),
+            visible: style.display !== 'none' &&
+              style.visibility !== 'hidden' &&
+              Number(style.opacity) > 0.01 &&
+              rect.width > 0 &&
+              rect.height > 0,
+            opacity: style.opacity,
+            display: style.display,
+            visibility: style.visibility,
+            width: Math.round(rect.width),
+            height: Math.round(rect.height),
+          };
+        });
+      const summaryRows = [...document.querySelectorAll('.flex.items-center.cursor-pointer[data-aoe4-legend-injected="1"]')]
+        .map(row => {
+          const style = getComputedStyle(row);
+          const rect = row.getBoundingClientRect();
+          return {
+            text: (row.textContent || '').replace(/\s+/g, ' ').trim(),
+            visible: style.display !== 'none' &&
+              style.visibility !== 'hidden' &&
+              Number(style.opacity) > 0.01 &&
+              rect.width > 0 &&
+              rect.height > 0,
+          };
+        });
+      if (select) {
+        window.__aoe4TimelineModeSamples.push({
+          t: Math.round(performance.now()),
+          selectValue: select.value || '',
+          selectedText: select.selectedOptions?.[0]?.textContent?.trim() || '',
+          heading: [...document.querySelectorAll('h3')].map(h => (h.textContent || '').trim()).find(text => /Army|Resource|Timeline/.test(text)) || '',
+          hasSummaryCanvas: !!document.querySelector('canvas[data-aoe4-summary-canvas]'),
+          hasSummaryOptgroup: !!document.querySelector('optgroup[data-aoe4-summary-plus]'),
+          nativeVisibleRows: nativeRows.filter(row => row.visible),
+          summaryVisibleRows: summaryRows.filter(row => row.visible),
+          colorGate: !!document.getElementById('__aoe4-color-ext-chart-gate'),
+          summaryGate: !!document.getElementById('__aoe4-summary-default-gate'),
+        });
+      }
       if (select && canvas && !summaryReady) {
         const style = getComputedStyle(canvas);
         const rect = canvas.getBoundingClientRect();
@@ -114,35 +161,16 @@ async function setup(options = {}) {
         });
       }
       if (select && !summaryReady) {
-        const rows = [...document.querySelectorAll('.flex.items-center.cursor-pointer')]
-          .filter(row => !row.hasAttribute('data-aoe4-legend-injected'))
-          .map(row => {
-            const style = getComputedStyle(row);
-            const rect = row.getBoundingClientRect();
-            return {
-              text: (row.textContent || '').replace(/\s+/g, ' ').trim(),
-              visible: style.display !== 'none' &&
-                style.visibility !== 'hidden' &&
-                Number(style.opacity) > 0.01 &&
-                rect.width > 0 &&
-                rect.height > 0,
-              opacity: style.opacity,
-              display: style.display,
-              visibility: style.visibility,
-              width: Math.round(rect.width),
-              height: Math.round(rect.height),
-            };
-          });
-        if (rows.length) {
+        if (nativeRows.length) {
           window.__aoe4NativeLegendVisibilitySamples.push({
             t: Math.round(performance.now()),
-            rows,
+            rows: nativeRows,
             colorGate: !!document.getElementById('__aoe4-color-ext-chart-gate'),
             summaryGate: !!document.getElementById('__aoe4-summary-default-gate'),
           });
         }
       }
-      if (!summaryReady && performance.now() < 8000) requestAnimationFrame(sampleNativeTimeline);
+      if (performance.now() < 8000) requestAnimationFrame(sampleNativeTimeline);
     };
     requestAnimationFrame(sampleNativeTimeline);
 
@@ -329,6 +357,33 @@ async function dragSelectMostOfChart() {
     assert(
       visible.length === 0,
       `native Army/Army Value legend rows were visible before Summary+ rendered: ${JSON.stringify(visible.slice(0, 8))}`
+    );
+  });
+
+  await test('timeline never visibly transitions back to native Army Value after Summary+ appears', async () => {
+    await page.waitForFunction(() => {
+      const select = document.querySelector('select');
+      return select?.value?.includes('army-composition') &&
+        !!document.querySelector('canvas[data-aoe4-summary-canvas]') &&
+        !!document.querySelector('.flex.items-center.cursor-pointer[data-aoe4-legend-injected="1"]');
+    }, null, { timeout: 20000 });
+    await page.waitForTimeout(1500);
+    const samples = await page.evaluate(() => window.__aoe4TimelineModeSamples || []);
+    const firstSummaryIndex = samples.findIndex(sample =>
+      sample.selectValue.includes('army-composition') &&
+      sample.hasSummaryCanvas &&
+      sample.summaryVisibleRows.length > 0
+    );
+    assert(firstSummaryIndex >= 0, `never sampled visible Summary+ ArmyComp legend: ${JSON.stringify(samples.slice(-12))}`);
+    const afterSummary = samples.slice(firstSummaryIndex);
+    const nativeAfterSummary = afterSummary.filter(sample =>
+      sample.nativeVisibleRows.length > 0 ||
+      /^Army(?: Value)?$/i.test(sample.selectedText || '') ||
+      /^Army$/i.test(sample.heading || '')
+    );
+    assert(
+      nativeAfterSummary.length === 0,
+      `native Army/Army Value became visible after Summary+ appeared: ${JSON.stringify(nativeAfterSummary.slice(0, 12))}`
     );
   });
 
