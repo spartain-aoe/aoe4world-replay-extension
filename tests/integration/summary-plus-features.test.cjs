@@ -44,9 +44,9 @@ async function setup(options = {}) {
     args: [`--disable-extensions-except=${EXT_PATH}`, `--load-extension=${EXT_PATH}`],
   });
   bg = ctx.serviceWorkers()[0] || await ctx.waitForEvent('serviceworker', { timeout: 10000 });
-  await bg.evaluate(() => new Promise(resolve => {
+  await bg.evaluate(({ seedColorCache }) => new Promise(resolve => {
     const now = Date.now();
-    chrome.storage.local.set({
+    const items = {
       settings: {
         parseGameData: true,
         injectCharts: true,
@@ -65,13 +65,6 @@ async function setup(options = {}) {
         permanent: true,
         patch: '4.0.0/8719',
       },
-      colors_v5_233034826: {
-        savedAt: now,
-        players: [
-          { name: 'spartain', civilization: 'jin_dynasty', color: 6, slot: 0, playerId: 24574510 },
-          { name: 'DonationDonation', civilization: 'golden_horde', color: 1, slot: 1, playerId: 20653422 },
-        ],
-      },
       stats_metrics_v1_233034826: {
         savedAt: now,
         players: [
@@ -79,9 +72,19 @@ async function setup(options = {}) {
           { profileId: 20653422, name: 'DonationDonation', townCenterIdleSeconds: 45 },
         ],
       },
-    }, resolve);
-  }));
-  await installReplayApiMock(bg);
+    };
+    if (seedColorCache !== false) {
+      items.colors_v5_233034826 = {
+        savedAt: now,
+        players: [
+          { name: 'spartain', civilization: 'jin_dynasty', color: 6, slot: 0, playerId: 24574510 },
+          { name: 'DonationDonation', civilization: 'golden_horde', color: 1, slot: 1, playerId: 20653422 },
+        ],
+      };
+    }
+    chrome.storage.local.set(items, resolve);
+  }), { seedColorCache: options.seedColorCache });
+  await installReplayApiMock(bg, options.replayMockOptions || {});
   page = ctx.pages()[0] || await ctx.newPage();
   await page.addInitScript(() => {
     window.__aoe4NativeTimelineVisibilitySamples = [];
@@ -196,7 +199,56 @@ async function dragSelectMostOfChart() {
 
 (async () => {
   console.log('\n=== Summary+ Feature Integration ===');
-  await setup({ summaryDelayMs: 2000 });
+  await setup({
+    seedColorCache: false,
+    replayMockOptions: { replayMetadataDelayMs: 3500 },
+  });
+
+  await test('uncached games do not show Summary+ ArmyComp in native colors while replay colors are pending', async () => {
+    await page.goto(GAME_1V1, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+    const deadline = Date.now() + 10000;
+    let replayState = null;
+    while (Date.now() < deadline) {
+      replayState = await bg.evaluate(() => globalThis.__aoe4ReplayApiMockState);
+      if (replayState?.replayMetadataCalls >= 1) break;
+      await page.waitForTimeout(100);
+    }
+    await page.waitForTimeout(1000);
+    const pendingState = await page.evaluate(() => {
+      const canvas = document.querySelector('canvas[data-aoe4-summary-canvas]');
+      const style = canvas ? getComputedStyle(canvas) : null;
+      const rect = canvas?.getBoundingClientRect?.();
+      return {
+        hasSummaryCanvas: !!canvas,
+        summaryCanvasVisible: !!canvas && style?.display !== 'none' && Number(style?.opacity || '1') > 0.01 && (rect?.width || 0) > 0 && (rect?.height || 0) > 0,
+        hasSummaryOptgroup: !!document.querySelector('optgroup[data-aoe4-summary-plus]'),
+        summaryGate: !!document.getElementById('__aoe4-summary-default-gate'),
+      };
+    });
+    pendingState.replayState = await bg.evaluate(() => globalThis.__aoe4ReplayApiMockState);
+    assert(pendingState.replayState?.replayMetadataCalls >= 1, `replay color request did not start: ${JSON.stringify(pendingState)}`);
+    assert(!pendingState.hasSummaryOptgroup, `Summary+ optgroup appeared before replay colors resolved: ${JSON.stringify(pendingState)}`);
+    assert(pendingState.summaryGate, `Summary+ gate should remain while uncached colors are pending: ${JSON.stringify(pendingState)}`);
+    assert(!pendingState.summaryCanvasVisible, `ArmyComp rendered visibly before uncached replay colors resolved: ${JSON.stringify(pendingState)}`);
+
+    const finalDeadline = Date.now() + 20000;
+    while (Date.now() < finalDeadline) {
+      const ready = await page.evaluate(async () => ({
+        selected: document.querySelector('select')?.value || '',
+        hasCanvas: !!document.querySelector('canvas[data-aoe4-summary-canvas]'),
+      }));
+      const state = await bg.evaluate(() => globalThis.__aoe4ReplayApiMockState);
+      if (state?.blobReplayCalls >= 1 && ready.selected.includes('army-composition') && ready.hasCanvas) return;
+      await page.waitForTimeout(150);
+    }
+    throw new Error('ArmyComp did not render after uncached replay colors resolved');
+  });
+
+  await teardown();
+
+  await setup({
+    summaryDelayMs: 2000,
+  });
 
   await test('native Army Value chart is hidden while default Summary+ chart is pending', async () => {
     await page.goto(GAME_1V1, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
@@ -223,11 +275,6 @@ async function dragSelectMostOfChart() {
     assert(!state.colorGate, `probe should run after color gate release: ${JSON.stringify(state)}`);
     assert(state.summaryGate, `Summary+ default gate missing while summary is pending: ${JSON.stringify(state)}`);
     assert(state.nativeCanvasOpacity === '0', `native Army Value canvas visible while Summary+ pending: ${JSON.stringify(state)}`);
-    await page.waitForFunction(() => {
-      const select = document.querySelector('select');
-      return select?.value?.includes('army-composition') &&
-        [...document.querySelectorAll('h3')].some(h => (h.textContent || '').includes('Army Composition'));
-    }, null, { timeout: 20000 });
   });
 
   await test('native Army Value chart is never visibly sampled before Summary+ renders', async () => {

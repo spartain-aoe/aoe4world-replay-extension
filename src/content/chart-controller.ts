@@ -166,7 +166,7 @@ export function tryAddSummaryCharts(): void {
       if (!response.ok) throw new Error(`AoE4 World summary returned HTTP ${response.status}`);
       return response.json();
     })
-    .then((summary: GameSummary) => {
+    .then(async (summary: GameSummary) => {
       if (!isCurrentGameRequest(timeline, gameId, routeToken)) {
         if (timeline.root.dataset.aoe4SummaryPlusPendingUrl === url) {
           delete timeline.root.dataset.aoe4SummaryPlusPendingUrl;
@@ -174,10 +174,23 @@ export function tryAddSummaryCharts(): void {
         removeSummaryDefaultGateStyle();
         return;
       }
+      scheduleDetailsTableMetrics(summary, gameId);
+      const replayColors = await replayColorsPromise;
+      if (!isCurrentGameRequest(timeline, gameId, routeToken)) {
+        if (timeline.root.dataset.aoe4SummaryPlusPendingUrl === url) {
+          delete timeline.root.dataset.aoe4SummaryPlusPendingUrl;
+        }
+        removeSummaryDefaultGateStyle();
+        return;
+      }
+      if (replayColors.ok) {
+        summary._aoe4ReplayPlayers = replayColors.players;
+      } else {
+        warnReplayColorFailure(gameId, replayColors);
+      }
       if (timeline.root.dataset.aoe4SummaryPlusPendingUrl === url) {
         delete timeline.root.dataset.aoe4SummaryPlusPendingUrl;
       }
-      scheduleDetailsTableMetrics(summary, gameId);
       installTimelineMetrics(timeline, summary);
       ensureChartInjector();
       ensureReplayPlayerColors(timeline);

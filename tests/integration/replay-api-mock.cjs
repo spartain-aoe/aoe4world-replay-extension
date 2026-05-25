@@ -11,7 +11,15 @@ function replayFixtureBase64() {
 
 async function installReplayApiMock(bg, options = {}) {
   await bg.evaluate(
-    ({ replayB64, replayMetadataFails = false, replayMetadataFailsOnce = false, replayBlobFails = false, replayBlobFailsOnce = false }) => {
+    ({
+      replayB64,
+      replayMetadataFails = false,
+      replayMetadataFailsOnce = false,
+      replayBlobFails = false,
+      replayBlobFailsOnce = false,
+      replayMetadataDelayMs = 0,
+      replayBlobDelayMs = 0,
+    }) => {
       const bytesFromBase64 = (b64) => {
         const binary = atob(b64);
         const bytes = new Uint8Array(binary.length);
@@ -21,6 +29,7 @@ async function installReplayApiMock(bg, options = {}) {
 
       const replayBytes = bytesFromBase64(replayB64);
       const originalFetch = globalThis.fetch.bind(globalThis);
+      const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
       const state = {
         replayMetadataCalls: 0,
         blobReplayCalls: 0,
@@ -45,6 +54,7 @@ async function installReplayApiMock(bg, options = {}) {
 
         if (href.includes('aoe-api.worldsedgelink.com') && href.includes('getReplayFiles')) {
           state.replayMetadataCalls++;
+          if (replayMetadataDelayMs > 0) await delay(replayMetadataDelayMs);
           if (replayMetadataFails || (replayMetadataFailsOnce && state.replayMetadataCalls === 1)) {
             return new Response('Bad Gateway', {
               status: 502,
@@ -74,6 +84,7 @@ async function installReplayApiMock(bg, options = {}) {
 
         if (href.startsWith('https://fixture.test/')) {
           state.blobReplayCalls++;
+          if (replayBlobDelayMs > 0) await delay(replayBlobDelayMs);
           if (replayBlobFails || (replayBlobFailsOnce && state.blobReplayCalls === 1)) {
             return new Response('Bad Gateway', {
               status: 502,
@@ -96,6 +107,8 @@ async function installReplayApiMock(bg, options = {}) {
       replayMetadataFailsOnce: options.replayMetadataFailsOnce === true,
       replayBlobFails: options.replayBlobFails === true,
       replayBlobFailsOnce: options.replayBlobFailsOnce === true,
+      replayMetadataDelayMs: Number(options.replayMetadataDelayMs) || 0,
+      replayBlobDelayMs: Number(options.replayBlobDelayMs) || 0,
     },
   );
 }
