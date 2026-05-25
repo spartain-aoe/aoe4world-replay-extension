@@ -18,6 +18,9 @@ function unitNoIcon(name: string, key: string): PbgidEntry {
 }
 
 const BATTERING_RAM = unit('Battering Ram', 'battering-ram', 'battering-ram-2');
+const KATANA_BANNERMAN = unit('Katana Bannerman', 'katana-bannerman', 'katana-bannerman-2');
+const UMA_BANNERMAN = unit('Uma Bannerman', 'uma-bannerman', 'uma-bannerman-2');
+const YUMI_BANNERMAN = unit('Yumi Bannerman', 'yumi-bannerman', 'yumi-bannerman-2');
 
 export const pbgidUnitOverridesMap: Map<number, PbgidEntry> = new Map([
   [166629, unit('Zhuge Nu', 'zhuge-nu', 'zhuge-nu-2')],
@@ -207,23 +210,23 @@ export const pbgidUnitOverridesMap: Map<number, PbgidEntry> = new Map([
   // Entries without a CDN icon - n/k only; icon resolved from page DOM:
   [5000214, unitNoIcon('Fortress', 'fortress')], // x66 fortress [knights_templar]
   [2059966, unitNoIcon('Cattle', 'cattle')], // x32 cattle [malians]
-  [2138205, unitNoIcon('Bannermen', 'bannermen')], // x32 bannermen_siege [japanese]
-  [2145966, unitNoIcon('Bannermen', 'bannermen')], // x31 bannermen_siege [japanese]
-  [2138188, unitNoIcon('Bannermen', 'bannermen')], // x25 bannermen_melee [japanese]
-  [2143513, unitNoIcon('Bannermen', 'bannermen')], // x17 bannermen_melee [japanese]
-  [2145967, unitNoIcon('Bannermen', 'bannermen')], // x16 bannermen_siege [japanese]
+  [2138205, UMA_BANNERMAN], // x32 bannermen_siege [japanese]
+  [2145966, UMA_BANNERMAN], // x31 bannermen_siege [japanese]
+  [2138188, KATANA_BANNERMAN], // x25 bannermen_melee [japanese]
+  [2143513, KATANA_BANNERMAN], // x17 bannermen_melee [japanese]
+  [2145967, UMA_BANNERMAN], // x16 bannermen_siege [japanese]
   [2127468, unitNoIcon('Treasure Caravan', 'treasure-caravan')], // x13 treasure_caravan [japanese]
-  [2138204, unitNoIcon('Bannermen', 'bannermen')], // x11 bannermen_ranged [japanese]
+  [2138204, YUMI_BANNERMAN], // x11 bannermen_ranged [japanese]
   [2123482, unitNoIcon('Trade Cart', 'trade-cart')], // x10 trade_cart [french]
-  [2143514, unitNoIcon('Bannermen', 'bannermen')], // x8 bannermen_melee [japanese]
-  [2143515, unitNoIcon('Bannermen', 'bannermen')], // x8 bannermen_ranged [japanese]
+  [2143514, KATANA_BANNERMAN], // x8 bannermen_melee [japanese]
+  [2143515, YUMI_BANNERMAN], // x8 bannermen_ranged [japanese]
   [166305, unitNoIcon('Scorpion', 'scorpion')], // x7 scorpion [english]
   [132253, unitNoIcon('Scorpion', 'scorpion')], // x6 scorpion [french]
   [9004030, unitNoIcon('Scorpion', 'scorpion')], // x6 scorpion [jin_dynasty]
   [2034659, unitNoIcon('Scorpion', 'scorpion')], // x5 scorpion [ottomans]
   [9004022, unitNoIcon('Scorpion', 'scorpion')], // x5 scorpion [jin_dynasty]
   [133033, unitNoIcon('Scorpion', 'scorpion')], // x4 scorpion [rus]
-  [2143516, unitNoIcon('Bannermen', 'bannermen')], // x4 bannermen_ranged [japanese]
+  [2143516, YUMI_BANNERMAN], // x4 bannermen_ranged [japanese]
   [6186377, unitNoIcon('Scorpion', 'scorpion')], // x4 scorpion [order_of_the_dragon]
   [8154466, unitNoIcon('Scorpion', 'scorpion')], // x4 scorpion [ayyubids]
   [8998849, unitNoIcon('Scorpion', 'scorpion')], // x4 scorpion [ayyubids]

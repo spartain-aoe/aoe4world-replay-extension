@@ -94,6 +94,16 @@ test('unitIconCandidates resolves HAG/Mohe from packaged pbgid overrides', () =>
   assert.ok(candidates.some(c => c.includes('/mohe-tribesman-2.png')));
 });
 
+test('unitIconCandidates resolves Japanese Bannerman pbgid variants from game 234920289', () => {
+  const katanaCandidates = unitIconCandidates('icons/races/japanese/units/bannermen_melee', null, null, 2143513);
+  const umaCandidates = unitIconCandidates('icons/races/japanese/units/bannermen_siege', null, null, 2145966);
+  const yumiCandidates = unitIconCandidates('icons/races/japanese/units/bannermen_ranged', null, null, 2143515);
+
+  assert.ok(katanaCandidates.some(c => c.includes('/katana-bannerman-2.png')), `katana candidates: ${katanaCandidates.join(', ')}`);
+  assert.ok(umaCandidates.some(c => c.includes('/uma-bannerman-2.png')), `uma candidates: ${umaCandidates.join(', ')}`);
+  assert.ok(yumiCandidates.some(c => c.includes('/yumi-bannerman-2.png')), `yumi candidates: ${yumiCandidates.join(', ')}`);
+});
+
 test('unitIconCandidates keeps Man-at-Arms fallback intact', () => {
   const candidates = unitIconCandidates('icons/races/common/units/man_at_arms_2', null, null, null);
   assert.ok(candidates.some(c => c.includes('/man-at-arms-2.png')));

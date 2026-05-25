@@ -180,6 +180,30 @@ describe('buildArmySeriesForPlayer', () => {
     }
   });
 
+  test('maps Japanese Bannerman variants from game 234920289 to typed icon-backed series', () => {
+    const player = {
+      name: 'Ségurant',
+      civilization: 'japanese',
+      buildOrder: [
+        { id: 'bannerman-melee', type: 'Unit', icon: 'icons/races/japanese/units/bannermen_melee', pbgid: 2143513, finished: [100, 200, 300, 400, 500, 600, 700, 800, 900], destroyed: [1000] },
+        { id: 'bannerman-siege', type: 'Unit', icon: 'icons/races/japanese/units/bannermen_siege', pbgid: 2145966, finished: [150], destroyed: [950] },
+      ],
+    };
+
+    const result = buildArmySeriesForPlayer(player, [0, 300, 600, 900, 1200], '#4dabf7');
+    const katana = result.find(s => s.mergeKey === 'katana-bannerman');
+    const uma = result.find(s => s.mergeKey === 'uma-bannerman');
+
+    assert.ok(katana, `expected Katana Bannerman series, got ${result.map(s => `${s.mergeKey}:${s.label}`).join(', ')}`);
+    assert.ok(uma, `expected Uma Bannerman series, got ${result.map(s => `${s.mergeKey}:${s.label}`).join(', ')}`);
+    assert.equal(katana.label, 'Katana Bannerman');
+    assert.equal(uma.label, 'Uma Bannerman');
+    assert.equal(katana.createdTotal, 9);
+    assert.equal(uma.createdTotal, 1);
+    assert.ok(katana.iconCandidates.some(c => c.includes('/katana-bannerman-2.png')), `katana icon candidates: ${katana.iconCandidates.join(', ')}`);
+    assert.ok(uma.iconCandidates.some(c => c.includes('/uma-bannerman-2.png')), `uma icon candidates: ${uma.iconCandidates.join(', ')}`);
+  });
+
   test('computes parallel _countValues and _valueValues (cost-weighted) per series', () => {
     // Seed unit cost data for two english units: Knight (200 res) and Spearman (60 res).
     const previousEnglish = unitDataIndex.get('english');
