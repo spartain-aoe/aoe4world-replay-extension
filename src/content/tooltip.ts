@@ -16,6 +16,7 @@ import {
   syncRangeUi,
   applyRangeLegend,
 } from './range.ts';
+import { shouldSuppressHover } from './interactions.ts';
 import { updateCanvasTooltip, updateArmyMiniTooltip } from './tooltip-content.ts';
 import type {
   CanvasExtensions,
@@ -72,6 +73,7 @@ export function attachCanvasTooltip(canvas: TooltipCanvas, chart: Chart, timelin
   const onMove = (event: MouseEvent): void => {
     event.preventDefault();
     event.stopImmediatePropagation();
+    if (shouldSuppressHover(timeline, event)) return;
     if (chart.type === 'army' && getActiveRange(timeline?.chartBox, chart)
         && !getActiveDrag(timeline?.chartBox, chart)) {
       return;

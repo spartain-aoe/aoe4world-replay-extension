@@ -43,6 +43,7 @@ import { attachCanvasTooltip, detachCanvasTooltip } from './tooltip.ts';
 import {
   attachTimelineHoverGuard,
   attachPlayerToggle,
+  suppressHoverUntilPointerMove,
 } from './interactions.ts';
 import { scheduleDetailsTableMetrics } from './details-metrics.ts';
 import type {
@@ -536,6 +537,7 @@ function ensureSummaryCanvas(timeline: TimelineElements): TimelineElements['canv
 function renderTimelineMetric(timeline: TimelineElements, chart: Chart): void {
   removeSummaryDefaultGateStyle();
   hideNativeAgeUpOverlay(timeline);
+  suppressHoverUntilPointerMove(timeline);
   if (!timeline.heading.dataset.aoe4NativeTitle) {
     timeline.heading.dataset.aoe4NativeTitle = timeline.heading.textContent || '';
   }

@@ -226,6 +226,8 @@ export interface TimelineElements {
   __aoe4BuildOrderRetryScheduled?: boolean;
   __aoe4BuildOrderObserver?: MutationObserver | null;
   __aoe4ArmyModeToggle?: HTMLElement | null;
+  __aoe4SuppressHoverUntilMove?: boolean;
+  __aoe4SuppressHoverAbort?: AbortController | null;
 }
 
 export interface TimelineRootExtensions {
@@ -334,8 +336,8 @@ export interface CanvasTooltipHandlers {
 export interface PlayerToggleHandler {
   row: HTMLElement;
   onClick: (event: MouseEvent) => void;
-  onEnter?: () => void;
-  onLeave?: () => void;
+  onEnter?: (event: MouseEvent) => void;
+  onLeave?: (event: MouseEvent) => void;
 }
 
 export interface UnitDataEntry {

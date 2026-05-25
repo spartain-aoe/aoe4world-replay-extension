@@ -266,6 +266,51 @@ async function dragSelectMostOfChart() {
     assert(state.hasSummaryCanvas, `synthetic native reset restored native canvas: ${JSON.stringify(state)}`);
   });
 
+  await test('stale hover events immediately after selecting Army Composition do not highlight or stop animation', async () => {
+    const state = await page.evaluate(async () => {
+      const select = document.querySelector('select');
+      const resourceOption = [...(select?.querySelectorAll('option') || [])]
+        .find(option => option.value.includes('resources-gathered-total'));
+      if (!select || !resourceOption) return { error: 'missing resource option' };
+      select.value = resourceOption.value;
+      select.dispatchEvent(new Event('input', { bubbles: true }));
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+
+      const armyOption = [...select.querySelectorAll('option')]
+        .find(option => option.value.includes('army-composition'));
+      if (!armyOption) return { error: 'missing army option' };
+      select.value = armyOption.value;
+      select.dispatchEvent(new Event('input', { bubbles: true }));
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      await new Promise(resolve => requestAnimationFrame(resolve));
+
+      const canvas = document.querySelector('canvas[data-aoe4-summary-canvas]');
+      const row = document.querySelector('[data-aoe4-legend-injected="1"], .flex.items-center.cursor-pointer');
+      const rect = canvas?.getBoundingClientRect();
+      if (canvas && rect) {
+        canvas.dispatchEvent(new MouseEvent('mousemove', {
+          bubbles: true,
+          cancelable: true,
+          clientX: rect.left + rect.width / 2,
+          clientY: rect.top + rect.height / 2,
+        }));
+      }
+      row?.dispatchEvent(new MouseEvent('mouseenter', { bubbles: false, cancelable: true }));
+      await new Promise(resolve => setTimeout(resolve, 80));
+
+      return {
+        tooltipVisible: [...document.querySelectorAll('.aoe4-summary-html-tooltip')]
+          .some(tooltip => getComputedStyle(tooltip).display !== 'none'),
+        highlightedRows: document.querySelectorAll('.aoe4-army-unit-row.is-highlighted').length,
+        closestRows: document.querySelectorAll('.aoe4-army-unit-row.is-closest').length,
+      };
+    });
+    assert(!state.error, state.error);
+    assert(state.tooltipVisible === false, `stale canvas hover showed tooltip: ${JSON.stringify(state)}`);
+    assert(state.highlightedRows === 0, `stale row hover highlighted legend rows: ${JSON.stringify(state)}`);
+    assert(state.closestRows === 0, `stale hover marked closest rows: ${JSON.stringify(state)}`);
+  });
+
   await test('default Army Composition has no visible native age-up overlay duplicate', async () => {
     await page.waitForTimeout(1500);
     const state = await page.evaluate(() => {

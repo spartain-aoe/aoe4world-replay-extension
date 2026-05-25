@@ -2,6 +2,7 @@ import { findCivIconPosition } from './dom.ts';
 import { armyIconElement, resolveCurrentUnitName } from './unit-icons.ts';
 import { drawTimelineCanvasChart } from './canvas-render.ts';
 import { getActiveRange, applyRangeLegend } from './range.ts';
+import { shouldSuppressHover } from './interactions.ts';
 import type {
   Chart,
   ChartSeries,
@@ -215,12 +216,14 @@ export function armyLegendUnitRow(
     });
   }
 
-  unitRow.addEventListener('mouseenter', () => {
+  unitRow.addEventListener('mouseenter', (event: MouseEvent) => {
+    if (shouldSuppressHover(timeline, event)) return;
     chart.highlightKey = unit.key;
     unitRow.classList.add('is-highlighted');
     drawTimelineCanvasChart(timeline.canvas, chart);
   });
-  unitRow.addEventListener('mouseleave', () => {
+  unitRow.addEventListener('mouseleave', (event: MouseEvent) => {
+    if (shouldSuppressHover(timeline, event)) return;
     delete chart.highlightKey;
     unitRow.classList.remove('is-highlighted');
     drawTimelineCanvasChart(timeline.canvas, chart);

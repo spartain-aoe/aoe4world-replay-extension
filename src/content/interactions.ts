@@ -28,6 +28,7 @@ export function attachTimelineHoverGuard(timeline: TimelineElements, chart: Char
     drawTimelineCanvasChart(timeline.canvas, chart);
   };
   const guardHover = (event: Event): void => {
+    if (shouldSuppressHover(timeline, event)) return;
     const target = event.target as Element | null;
     if (target === timeline.canvas) return;
     if (timeline.chartBox?.__aoe4HoverActive || timeline.canvas?.__aoe4HoverActive) return;
@@ -40,6 +41,43 @@ export function attachTimelineHoverGuard(timeline: TimelineElements, chart: Char
   }
   timeline.root.__aoe4SummaryActiveChart = chart;
   timeline.root.__aoe4SummaryHoverGuard = { guardHover };
+}
+
+function isRealPointerMove(event: Event | null | undefined): boolean {
+  if (!event || !('movementX' in event) || !('movementY' in event)) return false;
+  if (event.isTrusted) return true;
+  const move = event as MouseEvent;
+  return Math.abs(move.movementX || 0) > 0 || Math.abs(move.movementY || 0) > 0;
+}
+
+export function clearHoverSuppression(timeline: TimelineElements | null | undefined): void {
+  if (!timeline) return;
+  timeline.__aoe4SuppressHoverUntilMove = false;
+  if (timeline.__aoe4SuppressHoverAbort) {
+    timeline.__aoe4SuppressHoverAbort.abort();
+    timeline.__aoe4SuppressHoverAbort = null;
+  }
+}
+
+export function suppressHoverUntilPointerMove(timeline: TimelineElements): void {
+  clearHoverSuppression(timeline);
+  timeline.__aoe4SuppressHoverUntilMove = true;
+  const ctrl = new AbortController();
+  timeline.__aoe4SuppressHoverAbort = ctrl;
+  const clearOnMove = (event: Event): void => {
+    if (isRealPointerMove(event)) clearHoverSuppression(timeline);
+  };
+  window.addEventListener('mousemove', clearOnMove, { capture: true, signal: ctrl.signal });
+  window.addEventListener('pointermove', clearOnMove, { capture: true, signal: ctrl.signal });
+}
+
+export function shouldSuppressHover(timeline: TimelineElements | null | undefined, event?: Event | null): boolean {
+  if (!timeline?.__aoe4SuppressHoverUntilMove) return false;
+  if (isRealPointerMove(event)) {
+    clearHoverSuppression(timeline);
+    return false;
+  }
+  return true;
 }
 
 export function detachTimelineHoverGuard(timeline: TimelineElements): void {
@@ -103,11 +141,13 @@ export function attachPlayerToggle(timeline: TimelineElements, chart: Chart): vo
       ? playerCacheKey(playerName)
       : chart.data.series.find(s => s.playerName === playerName || s.label === playerName)?.key || null;
     if (highlightKeyForPlayer) {
-      const onEnter = (): void => {
+      const onEnter = (event: MouseEvent): void => {
+        if (shouldSuppressHover(timeline, event)) return;
         chart.highlightKey = highlightKeyForPlayer;
         drawTimelineCanvasChart(timeline.canvas, chart);
       };
-      const onLeave = (): void => {
+      const onLeave = (event: MouseEvent): void => {
+        if (shouldSuppressHover(timeline, event)) return;
         if (chart.highlightKey === highlightKeyForPlayer) {
           chart.highlightKey = null;
           drawTimelineCanvasChart(timeline.canvas, chart);
