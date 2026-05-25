@@ -178,7 +178,13 @@ export function drawTimelineCanvasChart(
   options: DrawTimelineCanvasChartOptions = {},
 ): void {
   canvas.__aoe4ActiveChart = chart;
-  if (!options.preserveAnimation) cancelTimelineCanvasAnimation(canvas);
+  const activeAnimationProgress = canvas.__aoe4AnimationToken
+    ? (canvas.__aoe4AnimationProgress ?? 0)
+    : null;
+  const renderOptions = (!options.preserveAnimation && activeAnimationProgress != null)
+    ? { ...options, preserveAnimation: true, animationProgress: options.animationProgress ?? activeAnimationProgress }
+    : options;
+  if (!renderOptions.preserveAnimation) cancelTimelineCanvasAnimation(canvas);
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
   const rect = canvas.getBoundingClientRect();
@@ -213,7 +219,7 @@ export function drawTimelineCanvasChart(
   const margin = { ...baseMargin, top: ageUpMarginTopForRows(ageUpPlacement.rowCount) };
   const plotW = Math.max(1, cssWidth - margin.left - margin.right);
   const plotH = Math.max(1, cssHeight - margin.top - margin.bottom);
-  const animationProgress = Math.max(0, Math.min(1, options.animationProgress ?? 1));
+  const animationProgress = Math.max(0, Math.min(1, renderOptions.animationProgress ?? 1));
   const riseUpAnimation = usesRiseUpAnimation(chart);
   const animationClip = riseUpAnimation
     ? {

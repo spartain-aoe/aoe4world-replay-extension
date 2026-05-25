@@ -88,6 +88,7 @@ async function setup(options = {}) {
   page = ctx.pages()[0] || await ctx.newPage();
   await page.addInitScript(() => {
     window.__aoe4NativeTimelineVisibilitySamples = [];
+    window.__aoe4NativeLegendVisibilitySamples = [];
     const sampleNativeTimeline = () => {
       const select = document.querySelector('select');
       const canvas = document.querySelector('canvas:not([data-aoe4-summary-canvas]):not(.aoe4-ageup-overlay)');
@@ -111,6 +112,35 @@ async function setup(options = {}) {
           colorGate: !!document.getElementById('__aoe4-color-ext-chart-gate'),
           summaryGate: !!document.getElementById('__aoe4-summary-default-gate'),
         });
+      }
+      if (select && !summaryReady) {
+        const rows = [...document.querySelectorAll('.flex.items-center.cursor-pointer')]
+          .filter(row => !row.hasAttribute('data-aoe4-legend-injected'))
+          .map(row => {
+            const style = getComputedStyle(row);
+            const rect = row.getBoundingClientRect();
+            return {
+              text: (row.textContent || '').replace(/\s+/g, ' ').trim(),
+              visible: style.display !== 'none' &&
+                style.visibility !== 'hidden' &&
+                Number(style.opacity) > 0.01 &&
+                rect.width > 0 &&
+                rect.height > 0,
+              opacity: style.opacity,
+              display: style.display,
+              visibility: style.visibility,
+              width: Math.round(rect.width),
+              height: Math.round(rect.height),
+            };
+          });
+        if (rows.length) {
+          window.__aoe4NativeLegendVisibilitySamples.push({
+            t: Math.round(performance.now()),
+            rows,
+            colorGate: !!document.getElementById('__aoe4-color-ext-chart-gate'),
+            summaryGate: !!document.getElementById('__aoe4-summary-default-gate'),
+          });
+        }
       }
       if (!summaryReady && performance.now() < 8000) requestAnimationFrame(sampleNativeTimeline);
     };
@@ -284,6 +314,21 @@ async function dragSelectMostOfChart() {
     assert(
       visible.length === 0,
       `native Army/Army Value canvas was visible before Summary+ rendered: ${JSON.stringify(visible.slice(0, 8))}`
+    );
+  });
+
+  await test('native Army Value legend is never visibly sampled before Summary+ renders', async () => {
+    const samples = await page.evaluate(() => window.__aoe4NativeLegendVisibilitySamples || []);
+    const visible = samples
+      .map(sample => ({
+        ...sample,
+        rows: sample.rows.filter(row => row.visible),
+      }))
+      .filter(sample => sample.rows.length > 0);
+    assert(samples.length > 0, 'startup visibility probe did not sample native timeline legend rows');
+    assert(
+      visible.length === 0,
+      `native Army/Army Value legend rows were visible before Summary+ rendered: ${JSON.stringify(visible.slice(0, 8))}`
     );
   });
 
