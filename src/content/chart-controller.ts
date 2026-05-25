@@ -62,6 +62,7 @@ type BuildOrderElement = HTMLElement & {
 let summaryChartUrl = '';
 let summaryChartGameId = '';
 let summaryChartRouteToken = 0;
+let colorOnlyGameId = '';
 const SUMMARY_DEFAULT_GATE_STYLE_ID = '__aoe4-summary-default-gate';
 
 function ensureSummaryDefaultGateStyle(): void {
@@ -83,12 +84,38 @@ function removeSummaryDefaultGateStyle(): void {
   document.getElementById(SUMMARY_DEFAULT_GATE_STYLE_ID)?.remove();
 }
 
-function clearActiveSummaryRoute(): void {
+function clearActiveSummaryRoute(clearColors = true): void {
   summaryChartUrl = '';
   summaryChartGameId = '';
   summaryChartRouteToken++;
   removeSummaryDefaultGateStyle();
-  sendChartInjectorControlMessage({ source: 'aoe4-color-ext', type: 'clear-colors' });
+  if (clearColors) sendChartInjectorControlMessage({ source: 'aoe4-color-ext', type: 'clear-colors' });
+}
+
+function removeSummaryChartsFromTimeline(timeline: TimelineElements | null | undefined): void {
+  if (!timeline) return;
+  clearRangeState(timeline.chartBox);
+  restoreNativeTimeline(timeline);
+  timeline.select.querySelector('optgroup[data-aoe4-summary-plus]')?.remove();
+  delete timeline.select.__aoe4SummaryActiveValue;
+  delete timeline.select.__aoe4SummaryCharts;
+  delete timeline.select.__aoe4SummaryDefaultGameId;
+}
+
+function ensureColorOnlyReplayColors(gameId: string): void {
+  if (!recolorEnabled()) return;
+  if (colorOnlyGameId === gameId) return;
+  colorOnlyGameId = gameId;
+  const profileId = getProfileIdFromUrl(window.location.href);
+  beginReplayColorLoad(gameId, { profileId }).then((result) => {
+    if (getGameIdFromUrl(window.location.href) !== gameId || chartsEnabled()) return;
+    if (result.ok) {
+      if (!applyReplayPlayersToNativeChart(result.players)) releaseNativeChartColorGate();
+      return;
+    }
+    releaseNativeChartColorGate();
+    warnReplayColorFailure(gameId, result);
+  });
 }
 
 function isCurrentGameRequest(timeline: TimelineElements, gameId: string | undefined, routeToken: number | undefined): boolean {
@@ -106,8 +133,11 @@ function isCurrentGameRequest(timeline: TimelineElements, gameId: string | undef
 export function tryAddSummaryCharts(): void {
   const gameId = getGameIdFromUrl(window.location.href);
   if (!chartsEnabled()) {
-    if (gameId) releaseNativeChartColorGate();
-    if (summaryChartGameId) clearActiveSummaryRoute();
+    const timeline = findTimelineElements() as TimelineElements | null;
+    removeSummaryChartsFromTimeline(timeline);
+    if (summaryChartGameId) clearActiveSummaryRoute(!recolorEnabled());
+    if (gameId && recolorEnabled()) ensureColorOnlyReplayColors(gameId);
+    else if (gameId) releaseNativeChartColorGate();
     return;
   }
   if (!gameId) {
@@ -534,6 +564,8 @@ function ensureSummaryCanvas(timeline: TimelineElements): TimelineElements['canv
   if (timeline.chartBox) timeline.chartBox.__aoe4HoverActive = false;
   oldCanvas.__aoe4HoverActive = false;
   if (!timeline.__aoe4NativeCanvas) timeline.__aoe4NativeCanvas = oldCanvas;
+  if (!timeline.chartBox.__aoe4NativeCanvas) timeline.chartBox.__aoe4NativeCanvas = timeline.__aoe4NativeCanvas;
+  timeline.__aoe4NativeCanvas = timeline.chartBox.__aoe4NativeCanvas;
   const newCanvas = document.createElement('canvas') as TimelineElements['canvas'];
   for (const name of oldCanvas.getAttributeNames()) {
     newCanvas.setAttribute(name, oldCanvas.getAttribute(name) as string);

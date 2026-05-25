@@ -12,6 +12,7 @@ function scanForRows(): void {
 
 chrome.storage.onChanged.addListener((changes: Record<string, chrome.storage.StorageChange>, area: string) => {
   if (area !== 'local') return;
+  if (changes.settings) scheduleScanBurst();
   for (const [key, change] of Object.entries(changes)) {
     if (!key.startsWith('fav_')) continue;
     const gameId = key.slice(4);

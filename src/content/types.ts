@@ -245,6 +245,7 @@ export interface ChartBoxExtensions {
   __aoe4ActiveDrag?: DragState | null;
   __aoe4DragAbort?: AbortController | null;
   __aoe4HoverActive?: boolean;
+  __aoe4NativeCanvas?: HTMLCanvasElement & CanvasExtensions;
 }
 
 export interface CanvasExtensions {

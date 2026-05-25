@@ -50,13 +50,14 @@ export function restoreNativeTimeline(timeline: TimelineElements): void {
   detachTimelineHoverGuard(timeline);
   detachCanvasTooltip(timeline.canvas);
   detachPlayerToggle(timeline);
-  const nativeCanvas = timeline.__aoe4NativeCanvas;
+  const nativeCanvas = timeline.__aoe4NativeCanvas || timeline.chartBox?.__aoe4NativeCanvas;
   if (nativeCanvas && timeline.canvas !== nativeCanvas) {
     const currentCanvas = timeline.canvas;
     if (currentCanvas?.parentElement) {
       currentCanvas.parentElement.replaceChild(nativeCanvas, currentCanvas);
     }
     timeline.canvas = nativeCanvas;
+    timeline.__aoe4NativeCanvas = nativeCanvas;
   }
   timeline.canvas.style.display = '';
   if (timeline.heading.dataset.aoe4NativeTitle) {
