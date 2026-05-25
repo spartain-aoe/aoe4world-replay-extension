@@ -74,7 +74,7 @@ async function setup(options = {}) {
       },
     };
     if (seedColorCache !== false) {
-      items.colors_v5_233034826 = {
+      items.colors_v6_233034826 = {
         savedAt: now,
         players: [
           { name: 'spartain', civilization: 'jin_dynasty', color: 6, slot: 0, playerId: 24574510 },

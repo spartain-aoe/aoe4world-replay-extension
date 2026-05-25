@@ -28,6 +28,28 @@ export interface ExtractPlayerColorsStructuralResult extends ExtractPlayerColors
     warnings: StructuralWarning[];
     diagnostic: StructuralDiagnostic;
 }
+
+export function mergePlayerColorStringsByPlayerId(
+    heuristic: PlayerColorInfo[],
+    structural: PlayerColorInfo[]
+): PlayerColorInfo[] {
+    const norm = (s: string | null | undefined): string | null => (s == null ? null : String(s));
+    const structuralByPid = new Map<string, PlayerColorInfo>(
+        structural
+            .filter((p: PlayerColorInfo) => !!p.playerId)
+            .map((p: PlayerColorInfo) => [norm(p.playerId) as string, p])
+    );
+    return heuristic.map((player: PlayerColorInfo): PlayerColorInfo => {
+        const structuralPlayer = player.playerId ? structuralByPid.get(String(player.playerId)) : undefined;
+        if (!structuralPlayer) return player;
+        return {
+            ...player,
+            name: structuralPlayer.name || player.name,
+            civilization: structuralPlayer.civilization || player.civilization,
+        };
+    });
+}
+
 interface TextReadResult {
     value: string;
     end: number;

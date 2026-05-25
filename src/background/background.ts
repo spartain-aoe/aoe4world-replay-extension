@@ -1,4 +1,4 @@
-import { extractPlayerColors, extractPlayerColorsStructural, setDebug as setParserDebug, type ExtractPlayerColorsResult, type PlayerColorInfo } from './replay-parser.ts';
+import { extractPlayerColors, extractPlayerColorsStructural, mergePlayerColorStringsByPlayerId, setDebug as setParserDebug, type ExtractPlayerColorsResult, type PlayerColorInfo } from './replay-parser.ts';
 import { extractStatsPlayerMetrics, type StatsPlayerMetric } from './stats-parser.ts';
 interface Settings {
     parseGameData: boolean;
@@ -197,7 +197,7 @@ async function parseReplayApiJson(response: Response, what = 'replay API'): Prom
 }
 const NATIVE_HOST = 'com.aoe4.replay_launcher';
 const MAX_FAVORITES = 10;
-const COLORS_CACHE_KEY_PREFIX = 'colors_v5_';
+const COLORS_CACHE_KEY_PREFIX = 'colors_v6_';
 const STATS_METRICS_CACHE_KEY_PREFIX = 'stats_metrics_v1_';
 const COLORS_CACHE_LIMIT = 50;
 const STATS_METRICS_CACHE_LIMIT = 50;
@@ -774,7 +774,7 @@ async function parseReplayPlayersFromArrayBuffer(arrayBuffer: ArrayBuffer, match
             try {
                 const structural = await extractPlayerColorsStructural(arrayBuffer);
                 if (playersAgree(result.players, structural.players)) {
-                    players = mergeStructuralPlayerStrings(result.players, structural.players);
+                    players = mergePlayerColorStringsByPlayerId(result.players, structural.players);
                 }
                 else {
                     players = result.players;
@@ -913,19 +913,6 @@ function playersStringDiff(heuristic: PlayerColorInfo[], structural: PlayerColor
             diffs.push({ playerId: hp.playerId, field: 'civilization', heuristic: hp.civilization, structural: sp.civilization });
     }
     return diffs;
-}
-function mergeStructuralPlayerStrings(heuristic: PlayerColorInfo[], structural: PlayerColorInfo[]): PlayerColorInfo[] {
-    const norm = (s: string | null | undefined): string | null => (s == null ? null : String(s));
-    const structuralByPid = new Map<string, PlayerColorInfo>(structural.filter((p: PlayerColorInfo) => !!p.playerId).map((p: PlayerColorInfo) => [norm(p.playerId) as string, p]));
-    return heuristic.map((player: PlayerColorInfo): PlayerColorInfo => {
-        const structuralPlayer = player.playerId ? structuralByPid.get(String(player.playerId)) : undefined;
-        if (!structuralPlayer) return player;
-        return {
-            ...player,
-            name: player.name || structuralPlayer.name,
-            civilization: player.civilization || structuralPlayer.civilization,
-        };
-    });
 }
 async function storeColorEntry(cacheKey: string, value: ColorCacheEntry): Promise<void> {
     await chrome.storage.local.set({ [cacheKey]: value });

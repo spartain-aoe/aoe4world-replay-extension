@@ -24,6 +24,57 @@ function installBaseFetchMock(handler) {
 }
 
 describe('background color cache', () => {
+  it('ignores stale v5 color cache entries after replay string hydration changes', async () => {
+    const { chrome, storageData } = makeChromeMock({
+      initial: {
+        settings: { parseGameData: true, recolorSwatches: true, injectCharts: true },
+        colors_v5_233034826: {
+          players: [{ slot: 0, name: 'Bad Cached Name', civilization: null, playerId: '1', color: 0, colorName: 'Blue' }],
+          savedAt: Date.now(),
+        },
+      },
+    });
+    globalThis.chrome = chrome;
+
+    const replayRequests = [];
+    const blobRequests = [];
+    installBaseFetchMock(async (href) => {
+      if (href.includes('getReplayFiles')) {
+        replayRequests.push(href);
+        return new Response(JSON.stringify({
+          result: { code: 0, message: 'SUCCESS' },
+          replayFiles: [{
+            datatype: 0,
+            size: replayFixture.byteLength,
+            matchhistory_id: 233034826,
+            url: 'https://fixture.test/replay.gz',
+          }],
+        }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (href.startsWith('https://fixture.test/')) {
+        blobRequests.push(href);
+        return new Response(replayFixture.slice(), {
+          status: 200,
+          headers: { 'content-type': 'application/zip' },
+        });
+      }
+      throw new Error(`unexpected fetch ${href}`);
+    });
+
+    const mod = await import(`../../src/background/background.ts?t=${Math.random()}`);
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    const result = await mod.handleGetPlayerColors('233034826', { profileId: '24574510' });
+    assert.equal(result.success, true);
+    assert.equal(result.cached, false);
+    assert.equal(replayRequests.length, 1);
+    assert.equal(blobRequests.length, 1);
+    assert.ok(storageData.colors_v6_233034826?.players?.length > 0, `expected v6 cache write, got ${JSON.stringify(storageData)}`);
+  });
+
   it('soft-caches replay API 5xx failures even when a profile id is available', async () => {
     const { chrome, storageData } = makeChromeMock({
       initial: { settings: { parseGameData: true, recolorSwatches: true, injectCharts: true } },
@@ -49,7 +100,7 @@ describe('background color cache', () => {
     assert.equal(first.success, false);
     assert.equal(first.error, 'replay_api_502');
     assert.equal(replayRequests.length, 1);
-    assert.equal(storageData.colors_v5_233034826?.softFailure, true);
+    assert.equal(storageData.colors_v6_233034826?.softFailure, true);
 
     const cached = await mod.handleGetPlayerColors('233034826', { profileId: '24574510' });
     assert.equal(cached.success, false);
@@ -99,7 +150,7 @@ describe('background color cache', () => {
     assert.equal(result.error, 'blob_fetch_502');
     assert.equal(replayRequests.length, 1);
     assert.equal(blobRequests.length, 1);
-    assert.equal(storageData.colors_v5_233034826?.softFailure, true);
+    assert.equal(storageData.colors_v6_233034826?.softFailure, true);
 
     const cached = await mod.handleGetPlayerColors('233034826', { profileId: '24574510' });
     assert.equal(cached.success, false);

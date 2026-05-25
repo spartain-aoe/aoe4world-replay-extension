@@ -555,7 +555,7 @@ function assert(condition, msg) {
   await test('color cache entries exist', async () => {
     const count = await bg.evaluate(() => new Promise(r => {
       chrome.storage.local.get(null, items => {
-        r(Object.keys(items).filter(k => k.startsWith('colors_v5_')).length);
+        r(Object.keys(items).filter(k => k.startsWith('colors_v6_')).length);
       });
     }));
     assert(count > 0, `no color cache entries, got ${count}`);

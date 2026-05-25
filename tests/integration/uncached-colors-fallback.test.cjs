@@ -70,7 +70,7 @@ async function runFailureScenario({ profileSuffix, replayMockOptions, verifyResp
     verifyState(state);
 
     const cacheEntry = await bg.evaluate(() => new Promise(resolve => {
-      chrome.storage.local.get('colors_v5_233034826', result => resolve(result.colors_v5_233034826));
+      chrome.storage.local.get('colors_v6_233034826', result => resolve(result.colors_v6_233034826));
     }));
     assert(cacheEntry?.softFailure === true, `expected soft failure cache entry, got ${JSON.stringify(cacheEntry)}`);
     assert(!cacheEntry?.players, `did not expect parsed replay players, got ${JSON.stringify(cacheEntry)}`);
