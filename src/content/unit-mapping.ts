@@ -5,6 +5,7 @@ import {
   resolveUnitByPbgid,
   resolveTechByPbgid,
   resolveUpgradeByPbgid,
+  lookupCostByMergeKey,
 } from './pbgid-map.ts';
 import {
   civDataSlugForPlayer,
@@ -35,6 +36,25 @@ export function unitCostTotal(unitData: UnitDataEntry | null | undefined): numbe
     .reduce((sum, key) => sum + (Number(costs[key]) || 0), 0);
 }
 
+// Resolve a unit's training cost, preferring the per-civ unit-data cache (which
+// can include variation-specific overrides) and falling back through:
+//   1. The `c` field on the pbgid-map entry (covers most units directly).
+//   2. The cost-by-mergekey index (rescues pbgids that only resolve via
+//      `pbgid-overrides.ts` — those entries carry display info but no cost —
+//      and fresh pbgids missing from `units/all-optimized.json` altogether).
+// Both fallbacks ensure Value-mode charts populate even when the async
+// unit-data fetch hasn't completed (or returned empty, since the cache is
+// opportunistically populated and may be empty on a fresh install).
+export function unitCostForItem(item: BuildOrderItem, player: PlayerSummary | null): number {
+  const unitData = lookupUnitDataByPbgid(item.pbgid, player) || lookupUnitDataForIcon(item.icon, player);
+  const fromData = unitCostTotal(unitData);
+  if (fromData > 0) return fromData;
+  const pbgidEntry = resolveUnitByPbgid(item.pbgid);
+  if (typeof pbgidEntry?.c === 'number' && pbgidEntry.c > 0) return pbgidEntry.c;
+  const key = pbgidEntry?.k || unitMergeKey(item.icon, item.pbgid ?? null);
+  return lookupCostByMergeKey(key);
+}
+
 export function unitMergeKey(icon: string | null | undefined, pbgid: number | null = null): string {
   const fromPbgid = resolveUnitByPbgid(pbgid);
   if (fromPbgid?.k) return fromPbgid.k;
@@ -46,6 +66,46 @@ export function unitMergeKey(icon: string | null | undefined, pbgid: number | nu
   return stripped || filename;
 }
 
+const BUILDING_UPGRADE_PATTERNS = [
+  /\bemplacement\b/,
+  /\b(?:arrow|handcannon)\s+slits?\b/,
+  /\bboiling\s+oil\b/,
+  /\bfortifications?\b/,
+  /\btower\s+shields?\b/,
+  /\btreasure\s+towers?\b/,
+  /\b(?:stone\s+)?wall\s+towers?\b/,
+];
+
+function isBuildingUpgradeText(value: unknown): boolean {
+  const text = String(value || '')
+    .toLowerCase()
+    .replace(/[-_]+/g, ' ')
+    .replace(/[\\/]+/g, ' ')
+    .replace(/\.[a-z0-9]+(?:[?#].*)?$/i, '')
+    .trim();
+  return Boolean(text && (
+    BUILDING_UPGRADE_PATTERNS.some(pattern => pattern.test(text)) ||
+    /\bupgrades?\s+(?:springald|cannon|mangonel|trebuchet|javelin|bed\s+crossbow|mengan\s+mouke|great\s+bombard|naval\s+springald)\b/.test(text)
+  ));
+}
+
+export function isBuildingUpgrade(
+  upgradeIcon: string | null | undefined,
+  upgradeName: string | null | undefined,
+  upgradePbgid: number | null = null,
+): boolean {
+  const fromTech = resolveTechByPbgid(upgradePbgid);
+  const fromUpgrade = resolveUpgradeByPbgid(upgradePbgid);
+  return [
+    upgradeIcon,
+    upgradeName,
+    fromTech?.n,
+    fromTech?.k,
+    fromUpgrade?.n,
+    fromUpgrade?.k,
+  ].some(isBuildingUpgradeText);
+}
+
 export function findUnitGroupForUpgrade(
   upgradeIcon: string | null | undefined,
   upgradeName: string,
@@ -53,6 +113,8 @@ export function findUnitGroupForUpgrade(
   upgradePbgid: number | null = null,
   iconAliasMap: Map<string, string> | null = null
 ): UnitGroup | null {
+  if (isBuildingUpgrade(upgradeIcon, upgradeName, upgradePbgid)) return null;
+
   const getGroup = (key: string): UnitGroup | null => grouped.get(key) || null;
   const fromPbgidUp = resolveUpgradeByPbgid(upgradePbgid);
   if (fromPbgidUp?.b) {
@@ -187,7 +249,7 @@ export function unitIconCandidates(
   const fromData = lookupUnitDataForIcon(icon, player);
   if (fromData?.icon) candidates.push(fromData.icon);
   else if (fromData?.id) candidates.push(`https://data.aoe4world.com/images/units/${fromData.id}.png`);
-  const alias = unitAlias(icon, player);
+  const alias = unitAlias(icon || label, player);
   if (alias?.slugs?.length) {
     for (const slug of alias.slugs) candidates.push(`https://data.aoe4world.com/images/units/${slug}.png`);
   }
@@ -221,6 +283,7 @@ export function unitAlias(
   player: PlayerSummary | null = null
 ): { displayName: string; slugs: string[] } | null {
   const raw = String(icon || '').split('/').pop() || '';
+  const normalized = raw.replace(/[-\s]+/g, '_').toLowerCase();
   const civ = normalizeName(player?.civilizationAttrib || player?.civilization);
   if (civ === 'french' && /^lancer(?:_\d+)?$/.test(raw)) {
     return { displayName: 'Royal Knight', slugs: ['royal-knight-2'] };

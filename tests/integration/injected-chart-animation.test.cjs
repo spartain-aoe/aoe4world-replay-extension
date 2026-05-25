@@ -170,6 +170,59 @@ function selectResourceChartAndTriggerGuard() {
   });
 }
 
+function selectSummaryChartByValuePart(valuePart) {
+  return page.evaluate((needle) => {
+    const select = document.querySelector('select');
+    if (!select) return null;
+    const og = select.querySelector('optgroup[data-aoe4-summary-plus]');
+    const opt = [...(og?.querySelectorAll('option') || [])].find(o => o.value.includes(needle));
+    if (!opt) return null;
+    select.value = opt.value;
+    select.dispatchEvent(new Event('input', { bubbles: true }));
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    return opt.value;
+  }, valuePart);
+}
+
+async function moveMouseToCanvasCenter() {
+  const box = await page.locator('canvas[data-aoe4-summary-canvas]').first().boundingBox();
+  assert(box, 'summary canvas missing for hover');
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+}
+
+async function assertChartStillAnimatingAfterTrustedHover(valuePart, label) {
+  const selectedValue = await selectSummaryChartByValuePart(valuePart);
+  assert(selectedValue, `could not select ${label}`);
+  await page.waitForFunction((needle) => {
+    const select = document.querySelector('select');
+    const canvas = document.querySelector('canvas[data-aoe4-summary-canvas]');
+    const heading = [...document.querySelectorAll('h3')]
+      .map(h => h.textContent || '')
+      .find(text => text.includes('Army') || text.includes('Resource') || text.includes('Gathered')) || '';
+    return select?.value?.includes(needle) && canvas && heading && !heading.includes('Timeline');
+  }, valuePart, { timeout: 10000 });
+  await page.waitForTimeout(20);
+  await moveMouseToCanvasCenter();
+  await page.waitForTimeout(50);
+  const earlySnap = await getCentreStripAlpha();
+
+  await page.waitForTimeout(900);
+  const lateSnap = await getCentreStripAlpha();
+
+  assert(earlySnap && lateSnap, `${label}: canvas snapshots missing`);
+  assert(lateSnap.alphaSum > 0, `${label}: late frame empty: ${JSON.stringify(lateSnap)}`);
+  const threshold = lateSnap.alphaSum * 0.95;
+  assert(
+    earlySnap.alphaSum < threshold,
+    `${label}: trusted hover snapped animation to final frame; early alpha ${earlySnap.alphaSum} ` +
+      `was not below 95% of late alpha ${lateSnap.alphaSum}. early=${JSON.stringify(earlySnap)}, late=${JSON.stringify(lateSnap)}`,
+  );
+  assert(
+    earlySnap.hash !== lateSnap.hash,
+    `${label}: early and late hashes are identical after trusted hover. early=${JSON.stringify(earlySnap)}, late=${JSON.stringify(lateSnap)}`,
+  );
+}
+
 // --- Minimal isolated test harness ---
 
 let passed = 0, failed = 0;
@@ -315,6 +368,16 @@ function assert(condition, msg) {
 
     console.log(`    early (50ms):  alphaSum=${earlySnap.alphaSum}`);
     console.log(`    late  (950ms): alphaSum=${lateSnap.alphaSum} threshold=${Math.round(threshold)}`);
+  });
+
+  await test('trusted hover during Resources Gathered animation does not snap to final frame', async () => {
+    await assertChartStillAnimatingAfterTrustedHover('resources-gathered-total', 'Resources Gathered');
+  });
+
+  await test('trusted hover during Army Composition animation does not snap to final frame', async () => {
+    assert(await selectSummaryChartByValuePart('resources-gathered-total'), 'could not pre-switch to Resources before Army animation test');
+    await page.waitForTimeout(1000);
+    await assertChartStillAnimatingAfterTrustedHover('army-composition', 'Army Composition');
   });
 
   await teardown();

@@ -206,19 +206,25 @@ function slimFamilies(json, opts = {}) {
     baseUnitIndex = null,
     unitFamilyIdSet = null,
     unitFamilyNameIndex = null,
+    includeCosts = false,
   } = opts;
   const data = Array.isArray(json) ? json : json?.data;
   if (!Array.isArray(data)) throw new Error('Unexpected payload shape (no data array)');
   const out = {};
   let families = 0;
+  let withCost = 0;
   for (const fam of data) {
     if (!fam || typeof fam !== 'object') continue;
     families++;
+    const familyCost = includeCosts && Number.isFinite(fam.costs?.total) && fam.costs.total > 0
+      ? fam.costs.total
+      : null;
     const familyEntry = {
       n: fam.name || fam.id || 'Unit',
       k: fam.id || (fam.name || '').toLowerCase().replace(/\s+/g, '-'),
       i: fam.icon || '',
     };
+    if (familyCost != null) familyEntry.c = familyCost;
     // Pre-compute base unit id for upgrade families (same for all variations).
     let familyBaseUnit = null;
     if (nameSource === 'variation' && unitFamilyIdSet) {
@@ -251,6 +257,16 @@ function slimFamilies(json, opts = {}) {
             i: fam.icon || familyEntry.i,
           };
           if (baseUnit) entry.b = baseUnit;
+        } else if (includeCosts) {
+          // Variations can override family-level costs (e.g. byzantine archer
+          // costs 30f/50w while the family-level archer is also 30f/50w but
+          // some civs differ). Use variation cost when present.
+          const variationCost = Number.isFinite(v.costs?.total) && v.costs.total > 0
+            ? v.costs.total
+            : null;
+          if (variationCost != null && variationCost !== familyCost) {
+            entry = { ...familyEntry, c: variationCost };
+          }
         }
         const existing = out[v.pbgid];
         if (existing && existing !== entry) {
@@ -262,10 +278,11 @@ function slimFamilies(json, opts = {}) {
           }
         }
         out[v.pbgid] = entry;
+        if (entry.c != null) withCost++;
       }
     }
   }
-  return { map: out, families, pbgids: Object.keys(out).length };
+  return { map: out, families, pbgids: Object.keys(out).length, withCost };
 }
 
 async function main() {
@@ -302,16 +319,19 @@ async function main() {
         slimOpts.unitFamilyIdSet = unitFamilyIdSet;
         slimOpts.unitFamilyNameIndex = unitFamilyNameIndex;
       }
-      const { map, families, pbgids } = slimFamilies(json, slimOpts);
+      if (src.type === 'units') slimOpts.includeCosts = true;
+      const { map, families, pbgids, withCost } = slimFamilies(json, slimOpts);
       result[src.type] = map;
       const commit = await fetchHeadCommit(src.url.replace('https://raw.githubusercontent.com/aoe4world/data/main/', ''));
       result.sources[src.type] = { url: src.url, families, pbgids, commit };
-      let baseStat = '';
+      let extraStat = '';
       if (src.type === 'upgrades') {
         const withBase = Object.values(map).filter(e => e.b).length;
-        baseStat = `, ${withBase} with base unit`;
+        extraStat = `, ${withBase} with base unit`;
+      } else if (src.type === 'units') {
+        extraStat = `, ${withCost} with cost`;
       }
-      console.log(` ${families} families, ${pbgids} pbgids${baseStat}`);
+      console.log(` ${families} families, ${pbgids} pbgids${extraStat}`);
     } catch (err) {
       console.log(` FAILED (${err.message})`);
       fetchFailed = true;

@@ -11,6 +11,7 @@ import {
   pbgidUnitsMap,
   pbgidTechsMap,
   pbgidUpgradesMap,
+  resolveUnitByPbgid,
 } from '../../src/content/pbgid-map.ts';
 import { unitDataIndex } from '../../src/content/unit-data-cache.ts';
 
@@ -69,6 +70,47 @@ test('unitIconCandidates handles elephant_raider rename', () => {
 test('unitIconCandidates includes French lancer alias slugs', () => {
   const candidates = unitIconCandidates('units/lancer_3', null, { civilizationAttrib: 'french' }, null);
   assert.ok(candidates.some(c => c.includes('royal-knight-2.png')));
+});
+
+test('unitIconCandidates resolves ZGN/repeater crossbowman from packaged pbgid overrides', () => {
+  const fallback = unitIconCandidates('icons/races/chinese/units/repeater_crossbowman_2', null, null, null);
+  assert.ok(!fallback.some(c => c.includes('/zhuge-nu-2.png')));
+  assert.ok(unitIconCandidates('icons/races/chinese/units/repeater_crossbowman_2', null, null, 166629)
+    .some(c => c.includes('/zhuge-nu-2.png')));
+});
+
+test('unitIconCandidates resolves Early Palace Guard from packaged pbgid overrides', () => {
+  const candidates = unitIconCandidates('icons/races/chinese_historic/units/early_palace_guard_2', null, null, 2138270);
+  assert.ok(candidates.some(c => c.includes('/palace-guard-2.png')));
+});
+
+test('unitIconCandidates resolves Ram from packaged pbgid overrides', () => {
+  const candidates = unitIconCandidates('icons/races/common/units/ram', null, null, 142043);
+  assert.ok(candidates.some(c => c.includes('/battering-ram-2.png')));
+});
+
+test('unitIconCandidates resolves HAG/Mohe from packaged pbgid overrides', () => {
+  const candidates = unitIconCandidates('icons/races/jin/units/grassland/horse_archer_grassland_2', null, null, 9004188);
+  assert.ok(candidates.some(c => c.includes('/mohe-tribesman-2.png')));
+});
+
+test('unitIconCandidates resolves Japanese Bannerman pbgid variants from game 234920289', () => {
+  const katanaCandidates = unitIconCandidates('icons/races/japanese/units/bannermen_melee', null, null, 2143513);
+  const umaCandidates = unitIconCandidates('icons/races/japanese/units/bannermen_siege', null, null, 2145966);
+  const yumiCandidates = unitIconCandidates('icons/races/japanese/units/bannermen_ranged', null, null, 2143515);
+
+  assert.ok(katanaCandidates.some(c => c.includes('/katana-bannerman-2.png')), `katana candidates: ${katanaCandidates.join(', ')}`);
+  assert.ok(umaCandidates.some(c => c.includes('/uma-bannerman-2.png')), `uma candidates: ${umaCandidates.join(', ')}`);
+  assert.ok(yumiCandidates.some(c => c.includes('/yumi-bannerman-2.png')), `yumi candidates: ${yumiCandidates.join(', ')}`);
+});
+
+test('unitIconCandidates keeps Man-at-Arms fallback intact', () => {
+  const candidates = unitIconCandidates('icons/races/common/units/man_at_arms_2', null, null, null);
+  assert.ok(candidates.some(c => c.includes('/man-at-arms-2.png')));
+});
+
+test('resolveUnitByPbgid uses packaged overrides when generated map has no entry', () => {
+  assert.equal(resolveUnitByPbgid(9004731)?.k, 'iron-pagoda');
 });
 
 test('unitIconCandidates deduplicates entries', () => {

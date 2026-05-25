@@ -2,13 +2,10 @@ import { normalizeName } from './dom.ts';
 import { AOE4_PLAYER_COLOR_HEX, playerColor } from './colors.ts';
 import {
   isArmyUnit,
-  unitCostTotal,
+  unitCostForItem,
 } from './unit-mapping.ts';
 import {
   civDataSlugForPlayer,
-  unitDataLoaded,
-  lookupUnitDataByPbgid,
-  lookupUnitDataForIcon,
 } from './unit-data-cache.ts';
 import {
   numericArray,
@@ -59,16 +56,22 @@ export function buildArmyCharts(summary: GameSummary, nativeColors: NativeColors
     const baseColor = playerColor(summary, player, originalIndex, nativeColors);
     const sign = player.team == null ? (originalIndex === 0 ? 1 : -1) : (teamSigns.get(player.team) ?? (originalIndex === 0 ? 1 : -1));
     return (buildArmySeriesForPlayer(player, labels, baseColor) as ChartSeries[])
-      .map((item: ChartSeries) => ({
-        ...item,
-        playerName,
-        team: player.team,
-        sign,
-        // Labels can collide across civ substitutions.
-        key: `army:${player.profileId || originalIndex}:${item.mergeKey || item.label}`,
-        label: `${playerName}: ${item.label}`,
-        values: item.values.map((value: number) => value * sign)
-      }));
+      .map((item: ChartSeries) => {
+        const signedCount = (item._countValues || item.values).map((value: number) => value * sign);
+        const signedValue = item._valueValues ? item._valueValues.map((value: number) => value * sign) : undefined;
+        return {
+          ...item,
+          playerName,
+          team: player.team,
+          sign,
+          // Labels can collide across civ substitutions.
+          key: `army:${player.profileId || originalIndex}:${item.mergeKey || item.label}`,
+          label: `${playerName}: ${item.label}`,
+          values: signedCount,
+          _countValues: signedCount,
+          ...(signedValue ? { _valueValues: signedValue } : {}),
+        };
+      });
   });
   if (!labels.length || !series.length) return [];
   precomputeStackedValues(series);
@@ -78,7 +81,7 @@ export function buildArmyCharts(summary: GameSummary, nativeColors: NativeColors
     meta: 'Active military units for all players over time from AoE4 World unit build-order finished/destroyed timestamps.',
     data: { labels, series },
     type: 'army',
-    options: { height: 280 }
+    options: { height: 280, armyMode: 'count' }
   }];
 }
 
@@ -134,9 +137,11 @@ export function buildArmyValueLeadCharts(summary: GameSummary, nativeColors: Nat
 
 export function buildDestroyedValueCharts(summary: GameSummary, nativeColors: NativeColors, nativePlayerOrder: string[] = []): Chart[] {
   const players: PlayerSummary[] = Array.isArray(summary.players) ? summary.players : [];
-  // Avoid partial values before cost data finishes loading.
+  // Allow rendering even when the per-civ unit-data cache hasn't loaded — the
+  // bundled pbgid-map.json now ships costs as a fallback so we still produce
+  // useful numbers immediately.
   const slugs = players.map(civDataSlugForPlayer).filter((slug): slug is string => Boolean(slug));
-  if (slugs.length === 0 || !slugs.every(s => unitDataLoaded.has(s))) return [];
+  if (slugs.length === 0) return [];
   const lastResTime = lastResourceTimestamp(players);
   const gameDuration = lastResTime || summary.duration || 0;
   const labels = buildSampleLabels(gameDuration, 10);
@@ -158,8 +163,7 @@ export function buildDestroyedValueCharts(summary: GameSummary, nativeColors: Na
     const sign = player.team == null ? 1 : (teamSigns.get(player.team) ?? 1);
     for (const item of (player.buildOrder || [])) {
       if (item.type !== 'Unit') continue;
-      const unitData = lookupUnitDataByPbgid(item.pbgid, player) || lookupUnitDataForIcon(item.icon, player);
-      const cost = unitCostTotal(unitData);
+      const cost = unitCostForItem(item, player);
       if (!cost) continue;
       for (const time of numericArray(item.destroyed)) {
         if (sign > 0) negDestroyedEvents.push({ time, cost });

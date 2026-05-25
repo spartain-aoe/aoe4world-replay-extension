@@ -177,7 +177,7 @@ function rowHasViewSummary(anchor: HTMLElement): boolean {
 }
 
 function shouldRenderReplayControls(anchor: HTMLElement): boolean {
-  return allowSummaryHiddenReplays || rowHasViewSummary(anchor);
+  return allowSummaryHiddenReplays || Boolean(getGameIdFromUrl(window.location?.href || '')) || rowHasViewSummary(anchor);
 }
 
 function rowViewportPriority(row: HTMLElement): number {

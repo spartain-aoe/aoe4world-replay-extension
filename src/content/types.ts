@@ -50,7 +50,10 @@ export interface BuildOrderItem {
   icon: string;
   pbgid?: number;
   finished?: number[];
+  constructed?: number[];
   destroyed?: number[];
+  packed?: number[];
+  unpacked?: number[];
   transformed?: number[];
   count?: number;
 }
@@ -89,7 +92,7 @@ export interface ReplayPlayer {
 export interface PbgidEntry {
   n: string;
   i?: string;
-  c?: string;
+  c?: number;
   k?: string;
   b?: string;
   u?: number;
@@ -111,6 +114,11 @@ export interface ChartSeries {
   playerName?: string;
   _finishedTimes?: number[];
   _destroyedTimes?: number[];
+  _finishedCosts?: number[];
+  _destroyedCosts?: number[];
+  _countValues?: number[];
+  _valueValues?: number[];
+  _valueTotal?: number;
   _hidden?: boolean;
   _stackBase?: Float32Array;
   _stackTop?: Float32Array;
@@ -156,6 +164,7 @@ export interface Chart {
   meta?: string;
   options?: {
     height?: number;
+    armyMode?: 'count' | 'value';
     [key: string]: unknown;
   };
   data: ChartData;
@@ -201,6 +210,9 @@ export interface TimelineElements {
     __aoe4SummaryActiveValue?: string;
     __aoe4SummaryCharts?: Map<string, Chart>;
     __aoe4SummaryListenerInstalled?: boolean;
+    __aoe4SummaryDefaultGameId?: string;
+    __aoe4SummaryNativeResetSuppressUntil?: number;
+    __aoe4SummarySelectSyncToken?: symbol;
   };
   chartBox: HTMLElement & ChartBoxExtensions;
   canvas: HTMLCanvasElement & CanvasExtensions;
@@ -213,6 +225,9 @@ export interface TimelineElements {
   __aoe4LegendChart?: Chart;
   __aoe4BuildOrderRetryScheduled?: boolean;
   __aoe4BuildOrderObserver?: MutationObserver | null;
+  __aoe4ArmyModeToggle?: HTMLElement | null;
+  __aoe4SuppressHoverUntilMove?: boolean;
+  __aoe4SuppressHoverAbort?: AbortController | null;
 }
 
 export interface TimelineRootExtensions {
@@ -230,6 +245,7 @@ export interface ChartBoxExtensions {
   __aoe4ActiveDrag?: DragState | null;
   __aoe4DragAbort?: AbortController | null;
   __aoe4HoverActive?: boolean;
+  __aoe4NativeCanvas?: HTMLCanvasElement & CanvasExtensions;
 }
 
 export interface CanvasExtensions {
@@ -239,6 +255,7 @@ export interface CanvasExtensions {
   __aoe4ActiveChart?: Chart | null;
   __aoe4AnimationFrame?: number | null;
   __aoe4AnimationToken?: symbol | null;
+  __aoe4AnimationProgress?: number | null;
   __aoe4IconRedrawFrame?: number | null;
 }
 
@@ -321,8 +338,8 @@ export interface CanvasTooltipHandlers {
 export interface PlayerToggleHandler {
   row: HTMLElement;
   onClick: (event: MouseEvent) => void;
-  onEnter?: () => void;
-  onLeave?: () => void;
+  onEnter?: (event: MouseEvent) => void;
+  onLeave?: (event: MouseEvent) => void;
 }
 
 export interface UnitDataEntry {

@@ -147,7 +147,6 @@ async function sanitizedGameBodyHtml() {
     const clone = document.body.cloneNode(true);
     clone.querySelectorAll([
       'optgroup[data-aoe4-summary-plus]',
-      'canvas[data-aoe4-summary-canvas]',
       '.aoe4-ageup-overlay',
       '.aoe4-army-unit-legend',
       '.aoe4-legend-breakdown',
@@ -209,9 +208,30 @@ function assert(condition, msg) {
     assert(count >= 7, `expected >=7 chart options, got ${count}`);
   });
 
-  await test('age-up overlay is present', async () => {
-    const has = await page.evaluate(() => !!document.querySelector('.aoe4-ageup-overlay'));
-    assert(has, 'age-up overlay not found');
+  await test('default Summary+ chart does not show duplicate native age-up overlay', async () => {
+    const state = await page.evaluate(() => {
+      const select = document.querySelector('select');
+      const overlays = [...document.querySelectorAll('.aoe4-ageup-overlay')].map(overlay => {
+        const style = getComputedStyle(overlay);
+        const rect = overlay.getBoundingClientRect();
+        return {
+          display: style.display,
+          opacity: style.opacity,
+          width: rect.width,
+          height: rect.height,
+        };
+      });
+      return {
+        selected: select?.value || '',
+        summaryCanvas: !!document.querySelector('canvas[data-aoe4-summary-canvas]'),
+        visibleOverlays: overlays.filter(overlay =>
+          overlay.display !== 'none' && overlay.opacity !== '0' && overlay.width > 0 && overlay.height > 0
+        ).length,
+      };
+    });
+    assert(state.selected.includes('army-composition'), `expected Army Composition selected by default: ${JSON.stringify(state)}`);
+    assert(state.summaryCanvas, `expected Summary+ canvas by default: ${JSON.stringify(state)}`);
+    assert(state.visibleOverlays === 0, `native age-up overlay should not duplicate Summary+ age-ups: ${JSON.stringify(state)}`);
   });
 
   await test('favorites star is present on detail page', async () => {
@@ -284,6 +304,30 @@ function assert(condition, msg) {
       settings: { parseGameData: true, injectCharts: true, recolorSwatches: true, debugLogs: false }
     }, r)));
     await page.waitForTimeout(500);
+  });
+
+  await test('disabling custom charts keeps custom colors active', async () => {
+    try {
+      await bg.evaluate(() => new Promise(r => chrome.storage.local.set({
+        settings: { parseGameData: true, injectCharts: false, recolorSwatches: true, debugLogs: false }
+      }, r)));
+      await page.waitForTimeout(4000);
+      const state = await page.evaluate(() => ({
+        chartOptions: document.querySelector('optgroup[data-aoe4-summary-plus]')?.querySelectorAll('option').length || 0,
+        summaryCanvas: !!document.querySelector('canvas[data-aoe4-summary-canvas]'),
+        recolored: document.querySelectorAll('[data-aoe4-recolored]').length,
+        chartGate: !!document.getElementById('__aoe4-color-ext-chart-gate'),
+      }));
+      assert(state.chartOptions === 0, `expected Summary+ charts removed when injectCharts=false, got ${JSON.stringify(state)}`);
+      assert(!state.summaryCanvas, `expected native canvas restored when injectCharts=false, got ${JSON.stringify(state)}`);
+      assert(state.recolored > 0, `expected custom colors to remain active, got ${JSON.stringify(state)}`);
+      assert(!state.chartGate, `expected native chart color gate released after colors apply, got ${JSON.stringify(state)}`);
+    } finally {
+      await bg.evaluate(() => new Promise(r => chrome.storage.local.set({
+        settings: { parseGameData: true, injectCharts: true, recolorSwatches: true, debugLogs: false }
+      }, r)));
+      await page.waitForTimeout(1000);
+    }
   });
 
   hydratedGameBodyHtml = await sanitizedGameBodyHtml();
@@ -511,7 +555,7 @@ function assert(condition, msg) {
   await test('color cache entries exist', async () => {
     const count = await bg.evaluate(() => new Promise(r => {
       chrome.storage.local.get(null, items => {
-        r(Object.keys(items).filter(k => k.startsWith('colors_v5_')).length);
+        r(Object.keys(items).filter(k => k.startsWith('colors_v6_')).length);
       });
     }));
     assert(count > 0, `no color cache entries, got ${count}`);
@@ -537,6 +581,24 @@ function assert(condition, msg) {
     assert(!earlyHide, 'early hide style should not remain when features are disabled');
     const gateActive = await page.evaluate(() => !!document.getElementById('__aoe4-color-ext-chart-gate'));
     assert(!gateActive, 'chart color gate should not remain when features are disabled');
+  });
+
+  console.log('\n=== Colors Only Mode ===');
+  await teardown();
+  await setup({ parseGameData: true, injectCharts: false, recolorSwatches: true, debugLogs: false });
+  await navigate(GAME_1V1, 12000);
+
+  await test('custom colors still inject when custom charts are disabled', async () => {
+    const state = await page.evaluate(() => ({
+      chartOptions: document.querySelector('optgroup[data-aoe4-summary-plus]')?.querySelectorAll('option').length || 0,
+      recolored: document.querySelectorAll('[data-aoe4-recolored]').length,
+      earlyHide: !!document.getElementById('__aoe4-color-ext-hide'),
+      chartGate: !!document.getElementById('__aoe4-color-ext-chart-gate'),
+    }));
+    assert(state.chartOptions === 0, `expected no Summary+ charts when injectCharts=false, got ${JSON.stringify(state)}`);
+    assert(state.recolored > 0, `expected custom color swatches when recolorSwatches=true, got ${JSON.stringify(state)}`);
+    assert(!state.earlyHide, `early hide should be removed after colors apply, got ${JSON.stringify(state)}`);
+    assert(!state.chartGate, `native chart color gate should be released after colors apply, got ${JSON.stringify(state)}`);
   });
 
   await teardown();

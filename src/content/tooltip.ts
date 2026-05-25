@@ -1,4 +1,4 @@
-import { drawTimelineCanvasChart } from './canvas-render.ts';
+import { drawTimelineCanvasChart, drawTimelineCanvasChartForHover } from './canvas-render.ts';
 import {
   getCollapsedPlayers,
   playerCacheKey,
@@ -16,6 +16,7 @@ import {
   syncRangeUi,
   applyRangeLegend,
 } from './range.ts';
+import { shouldSuppressHover } from './interactions.ts';
 import { updateCanvasTooltip, updateArmyMiniTooltip } from './tooltip-content.ts';
 import type {
   CanvasExtensions,
@@ -29,6 +30,11 @@ import type {
 type TooltipCanvas = HTMLCanvasElement & CanvasExtensions;
 
 const drawChart = drawTimelineCanvasChart as unknown as (
+  canvas: TooltipCanvas,
+  chart: Chart,
+  hoverIndex?: number | null,
+) => void;
+const drawHoverChart = drawTimelineCanvasChartForHover as unknown as (
   canvas: TooltipCanvas,
   chart: Chart,
   hoverIndex?: number | null,
@@ -58,7 +64,7 @@ export function attachCanvasTooltip(canvas: TooltipCanvas, chart: Chart, timelin
     const index = Math.max(0, Math.min(chart.data.labels.length - 1, Math.round(raw)));
 
     const closestKey = computeClosestSeriesKey(canvas, chart, index, event);
-    drawChart(canvas, chart, index);
+    drawHoverChart(canvas, chart, index);
 
     if (useFloatingTooltip && tooltip) {
       updateCanvasTooltip(tooltip, canvas, chart, index, event, closestKey);
@@ -72,6 +78,7 @@ export function attachCanvasTooltip(canvas: TooltipCanvas, chart: Chart, timelin
   const onMove = (event: MouseEvent): void => {
     event.preventDefault();
     event.stopImmediatePropagation();
+    if (shouldSuppressHover(timeline, event)) return;
     if (chart.type === 'army' && getActiveRange(timeline?.chartBox, chart)
         && !getActiveDrag(timeline?.chartBox, chart)) {
       return;

@@ -8,12 +8,14 @@ import {
   unitLabel,
   unitLabelBase,
   unitIconCandidates,
+  unitCostForItem,
   findUnitGroupForUpgrade,
 } from './unit-mapping.ts';
 import {
   numericArray,
   maxAbs,
-  activeCountValues,
+  activeCountValuesFromSorted,
+  activeValueValuesFromSorted,
   collapseChartSeries,
 } from './chart-utils.ts';
 import type { ChartSeries, PlayerSummary, UnitUpgrade } from './types.ts';
@@ -21,6 +23,8 @@ import type { ChartSeries, PlayerSummary, UnitUpgrade } from './types.ts';
 type ArmySeriesGroup = {
   finished: number[];
   destroyed: number[];
+  finishedCosts: number[];
+  destroyedCosts: number[];
   icon: string;
   pbgid?: number;
   hasCanonicalPbgid?: boolean;
@@ -37,8 +41,36 @@ type FindUnitGroupForUpgrade = (
   iconAliasMap?: Map<string, string>,
 ) => ArmySeriesGroup | undefined;
 
-const findUnitGroupForUpgradeTyped = findUnitGroupForUpgrade as FindUnitGroupForUpgrade;
+const findUnitGroupForUpgradeTyped = findUnitGroupForUpgrade as unknown as FindUnitGroupForUpgrade;
 const collapseChartSeriesTyped = collapseChartSeries as (series: ChartSeries[], limit: number) => ChartSeries[];
+
+function sortedEventPairs(times: number[], costs: number[]): { times: number[]; costs: number[] } {
+  const pairs = times.map((time, index) => ({ time, cost: costs[index] || 0 }))
+    .sort((a, b) => a.time - b.time);
+  return {
+    times: pairs.map(pair => pair.time),
+    costs: pairs.map(pair => pair.cost),
+  };
+}
+
+// Normalizes a unit display label to a singular merge-key so plural variants
+// (e.g. "Wynguard Rangers" -> "wynguard ranger", "Wynguard Footmen" -> "wynguard footman")
+// collapse onto their singular counterpart in the final series list.
+export function normalizeLabelForMerge(label: string): string {
+  const lower = String(label || '').toLowerCase().trim();
+  if (!lower) return '';
+  const parts = lower.split(/\s+/);
+  const last = parts[parts.length - 1];
+  let singular = last;
+  if (singular.endsWith('men') && singular.length > 3) singular = singular.slice(0, -3) + 'man';
+  else if (singular.endsWith('ies') && singular.length > 3) singular = singular.slice(0, -3) + 'y';
+  else if (singular.endsWith('sses')) singular = singular.slice(0, -2);
+  else if (singular.endsWith('s') && !singular.endsWith('ss') && !singular.endsWith('us') && singular.length > 3) {
+    singular = singular.slice(0, -1);
+  }
+  parts[parts.length - 1] = singular;
+  return parts.join(' ');
+}
 
 function addAliasCandidate(aliases: Map<string, Set<string>>, alias: string, canonical: string): void {
   if (!alias || !canonical || alias === canonical) return;
@@ -113,6 +145,8 @@ export function buildArmySeriesForPlayer(player: PlayerSummary, labels: number[]
       group = {
         finished: [],
         destroyed: [],
+        finishedCosts: [],
+        destroyedCosts: [],
         icon: item.icon,
         pbgid: item.pbgid,
         hasCanonicalPbgid,
@@ -128,8 +162,13 @@ export function buildArmySeriesForPlayer(player: PlayerSummary, labels: number[]
       group.label = unitLabelBase(key, item.icon, player, item.pbgid);
     }
 
-    group.finished.push(...numericArray(item.finished), ...numericArray(item.transformed));
-    group.destroyed.push(...numericArray(item.destroyed));
+    const cost = unitCostForItem(item, player);
+    const finishedTimes = [...numericArray(item.finished), ...numericArray(item.transformed)];
+    const destroyedTimes = numericArray(item.destroyed);
+    group.finished.push(...finishedTimes);
+    group.destroyed.push(...destroyedTimes);
+    for (let i = 0; i < finishedTimes.length; i++) group.finishedCosts.push(cost);
+    for (let i = 0; i < destroyedTimes.length; i++) group.destroyedCosts.push(cost);
   }
 
   for (const item of player.buildOrder || []) {
@@ -145,19 +184,30 @@ export function buildArmySeriesForPlayer(player: PlayerSummary, labels: number[]
   const byLabel = new Map<string, ArmySeriesGroup>();
   for (const group of grouped.values()) {
     const label = group.label || group.mergeKey;
-    const existing = byLabel.get(label);
+    const mergeLabel = normalizeLabelForMerge(label) || label;
+    const existing = byLabel.get(mergeLabel);
     if (existing) {
       existing.finished.push(...group.finished);
       existing.destroyed.push(...group.destroyed);
+      existing.finishedCosts.push(...group.finishedCosts);
+      existing.destroyedCosts.push(...group.destroyedCosts);
       existing.upgrades.push(...group.upgrades);
-      if ((!existing.pbgid || (!existing.hasCanonicalPbgid && group.hasCanonicalPbgid)) && group.pbgid) {
+      const existingLabelNorm = (existing.label || '').toLowerCase().trim();
+      const groupLabelNorm = label.toLowerCase().trim();
+      const existingIsSingular = existingLabelNorm === mergeLabel;
+      const groupIsSingular = groupLabelNorm === mergeLabel;
+      const promoteToCanonical = (!existing.pbgid || (!existing.hasCanonicalPbgid && group.hasCanonicalPbgid)) && group.pbgid;
+      const promoteToSingular = groupIsSingular && !existingIsSingular && group.pbgid;
+      if (promoteToCanonical || promoteToSingular) {
         existing.pbgid = group.pbgid;
         existing.icon = group.icon;
         existing.hasCanonicalPbgid = group.hasCanonicalPbgid;
         existing.label = group.label;
+      } else if (groupIsSingular && !existingIsSingular) {
+        existing.label = group.label;
       }
     } else {
-      byLabel.set(label, group);
+      byLabel.set(mergeLabel, group);
     }
   }
 
@@ -168,8 +218,13 @@ export function buildArmySeriesForPlayer(player: PlayerSummary, labels: number[]
       const baseCands = unitIconCandidates(events.icon, events.label, player, events.pbgid);
       const iconCands = pbgidData?.icon ? [pbgidData.icon, ...baseCands] : baseCands;
       if (fromPbgid?.i && !iconCands.includes(fromPbgid.i)) iconCands.unshift(fromPbgid.i);
-      const finishedTimes = events.finished.slice().sort((a: number, b: number) => a - b);
-      const destroyedTimes = events.destroyed.slice().sort((a: number, b: number) => a - b);
+      const finishedEvents = sortedEventPairs(events.finished, events.finishedCosts);
+      const destroyedEvents = sortedEventPairs(events.destroyed, events.destroyedCosts);
+      const finishedTimes = finishedEvents.times;
+      const destroyedTimes = destroyedEvents.times;
+      const countValues = activeCountValuesFromSorted(labels, finishedTimes, destroyedTimes);
+      const valueValues = activeValueValuesFromSorted(labels, finishedTimes, finishedEvents.costs, destroyedTimes, destroyedEvents.costs);
+      const valueTotal = events.finishedCosts.reduce((sum, c) => sum + (c || 0), 0);
       return {
         label: events.label,
         mergeKey: events.mergeKey,
@@ -180,9 +235,14 @@ export function buildArmySeriesForPlayer(player: PlayerSummary, labels: number[]
         iconCandidates: iconCands,
         createdTotal: events.finished.length,
         upgrades: events.upgrades.sort((a: UnitUpgrade, b: UnitUpgrade) => a.time - b.time),
-        values: activeCountValues(labels, events.finished, events.destroyed),
+        values: countValues,
+        _countValues: countValues,
+        _valueValues: valueValues,
+        _valueTotal: valueTotal,
         _finishedTimes: finishedTimes,
         _destroyedTimes: destroyedTimes,
+        _finishedCosts: finishedEvents.costs,
+        _destroyedCosts: destroyedEvents.costs,
       };
     })
     .filter(item => maxAbs(item.values) > 0);

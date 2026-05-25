@@ -27,7 +27,7 @@ import type {
   StackedYCache,
 } from './types.ts';
 
-type DrawTimelineCanvasChartOptions = {
+export type DrawTimelineCanvasChartOptions = {
   animationProgress?: number;
   preserveAnimation?: boolean;
 };
@@ -111,6 +111,7 @@ export function cancelTimelineCanvasAnimation(canvas: (HTMLCanvasElement & Canva
   }
   canvas.__aoe4AnimationFrame = null;
   canvas.__aoe4AnimationToken = null;
+  canvas.__aoe4AnimationProgress = null;
 }
 
 export function animateTimelineCanvasChart(
@@ -130,12 +131,15 @@ export function animateTimelineCanvasChart(
     ? performance.now()
     : Date.now();
   canvas.__aoe4AnimationToken = token;
+  canvas.__aoe4AnimationProgress = 0;
 
   const renderFrame = (now: number): void => {
     if (canvas.__aoe4AnimationToken !== token) return;
     const progress = Math.max(0, Math.min(1, (now - start) / durationMs));
+    const eased = easedProgress(progress);
+    canvas.__aoe4AnimationProgress = eased;
     drawTimelineCanvasChart(canvas, chart, null, {
-      animationProgress: easedProgress(progress),
+      animationProgress: eased,
       preserveAnimation: true,
     });
     if (progress < 1) {
@@ -143,12 +147,28 @@ export function animateTimelineCanvasChart(
     } else {
       canvas.__aoe4AnimationFrame = null;
       canvas.__aoe4AnimationToken = null;
+      canvas.__aoe4AnimationProgress = null;
       drawTimelineCanvasChart(canvas, chart);
     }
   };
 
   drawTimelineCanvasChart(canvas, chart, null, { animationProgress: 0, preserveAnimation: true });
   canvas.__aoe4AnimationFrame = requestAnimationFrame(renderFrame);
+}
+
+export function drawTimelineCanvasChartForHover(
+  canvas: HTMLCanvasElement & CanvasExtensions,
+  chart: Chart,
+  hoverIndex: number | null = null,
+): void {
+  if (canvas.__aoe4AnimationToken) {
+    drawTimelineCanvasChart(canvas, chart, hoverIndex, {
+      animationProgress: canvas.__aoe4AnimationProgress ?? 0,
+      preserveAnimation: true,
+    });
+    return;
+  }
+  drawTimelineCanvasChart(canvas, chart, hoverIndex);
 }
 
 export function drawTimelineCanvasChart(
@@ -158,7 +178,13 @@ export function drawTimelineCanvasChart(
   options: DrawTimelineCanvasChartOptions = {},
 ): void {
   canvas.__aoe4ActiveChart = chart;
-  if (!options.preserveAnimation) cancelTimelineCanvasAnimation(canvas);
+  const activeAnimationProgress = canvas.__aoe4AnimationToken
+    ? (canvas.__aoe4AnimationProgress ?? 0)
+    : null;
+  const renderOptions = (!options.preserveAnimation && activeAnimationProgress != null)
+    ? { ...options, preserveAnimation: true, animationProgress: options.animationProgress ?? activeAnimationProgress }
+    : options;
+  if (!renderOptions.preserveAnimation) cancelTimelineCanvasAnimation(canvas);
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
   const rect = canvas.getBoundingClientRect();
@@ -193,7 +219,7 @@ export function drawTimelineCanvasChart(
   const margin = { ...baseMargin, top: ageUpMarginTopForRows(ageUpPlacement.rowCount) };
   const plotW = Math.max(1, cssWidth - margin.left - margin.right);
   const plotH = Math.max(1, cssHeight - margin.top - margin.bottom);
-  const animationProgress = Math.max(0, Math.min(1, options.animationProgress ?? 1));
+  const animationProgress = Math.max(0, Math.min(1, renderOptions.animationProgress ?? 1));
   const riseUpAnimation = usesRiseUpAnimation(chart);
   const animationClip = riseUpAnimation
     ? {

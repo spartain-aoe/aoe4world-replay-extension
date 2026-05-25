@@ -60,7 +60,7 @@ export function sortedArmyTooltipPlayers(rows: TooltipRow[]): string[] {
 export function appendTooltipRow(
   tooltip: HTMLElement,
   row: TooltipRow,
-  chart: Pick<Chart, 'type'>,
+  chart: Pick<Chart, 'type' | 'options'>,
   omitPlayerName = '',
 ): void {
   const entry = document.createElement('div');
@@ -70,7 +70,9 @@ export function appendTooltipRow(
   const value = document.createElement('span');
   value.className = 'aoe4-summary-tooltip-value';
   value.style.color = row.item.color;
-  value.textContent = Math.round((chart.type === 'army' || chart.type === 'lead') ? Math.abs(row.value) : row.value).toLocaleString();
+  const absValue = (chart.type === 'army' || chart.type === 'lead') ? Math.abs(row.value) : row.value;
+  const isArmyValueMode = chart.type === 'army' && chart.options?.armyMode === 'value';
+  value.textContent = Math.round(absValue).toLocaleString() + (isArmyValueMode ? ' res' : '');
   const label = document.createElement('span');
   if (omitPlayerName) {
     label.textContent = row.item.unitLabel || row.item.label || '';

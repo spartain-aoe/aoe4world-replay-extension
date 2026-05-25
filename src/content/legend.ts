@@ -1,7 +1,8 @@
-import { findCivIconPosition } from './dom.ts';
+import { findCivIconPosition, TIMELINE_PLAYER_NAME_SELECTOR, TIMELINE_PLAYER_ROW_SELECTOR } from './dom.ts';
 import { armyIconElement, resolveCurrentUnitName } from './unit-icons.ts';
-import { drawTimelineCanvasChart } from './canvas-render.ts';
+import { drawTimelineCanvasChart, drawTimelineCanvasChartForHover } from './canvas-render.ts';
 import { getActiveRange, applyRangeLegend } from './range.ts';
+import { shouldSuppressHover } from './interactions.ts';
 import type {
   Chart,
   ChartSeries,
@@ -47,10 +48,10 @@ export function renderArmyUnitLegendNow(timeline: TimelineElements, chart: Chart
     byPlayer.get(item.playerName)?.push(item);
   }
 
-  const playerRows = [...timeline.root.querySelectorAll<HTMLElement>('.flex.items-center.cursor-pointer')];
+  const playerRows = [...timeline.root.querySelectorAll<HTMLElement>(TIMELINE_PLAYER_ROW_SELECTOR)];
   const rowByPlayerName = new Map<string, HTMLElement>();
   for (const candidate of playerRows) {
-    const candidateNameEl = candidate.querySelector<HTMLElement>('.font-bold, [class*="font-bold"]');
+    const candidateNameEl = candidate.querySelector<HTMLElement>(TIMELINE_PLAYER_NAME_SELECTOR);
     const rawName = (candidateNameEl?.textContent || '').trim().toLowerCase();
     if (rawName && !rowByPlayerName.has(rawName)) rowByPlayerName.set(rawName, candidate);
   }
@@ -84,7 +85,7 @@ export function renderArmyUnitLegendNow(timeline: TimelineElements, chart: Chart
     row.style.minWidth = '0';
     row.style.overflow = 'hidden';
 
-    const nameEl = row.querySelector<HTMLElement>('.font-bold, [class*="font-bold"]');
+    const nameEl = row.querySelector<HTMLElement>(TIMELINE_PLAYER_NAME_SELECTOR);
     if (nameEl) {
       nameEl.style.maxWidth = '8rem';
       nameEl.style.overflow = 'hidden';
@@ -192,7 +193,12 @@ export function armyLegendUnitRow(
 
   const total = document.createElement('span');
   total.className = 'aoe4-army-unit-total';
-  total.textContent = Math.round(unit.createdTotal || 0).toLocaleString();
+  const armyMode = chart.options?.armyMode === 'value' ? 'value' : 'count';
+  const totalCount = unit.createdTotal || 0;
+  const totalValue = unit._valueTotal || 0;
+  total.textContent = armyMode === 'value'
+    ? `${Math.round(totalValue).toLocaleString()} res`
+    : Math.round(totalCount).toLocaleString();
 
   const deltaTrained = document.createElement('span');
   deltaTrained.className = 'aoe4-army-unit-delta-trained';
@@ -210,15 +216,17 @@ export function armyLegendUnitRow(
     });
   }
 
-  unitRow.addEventListener('mouseenter', () => {
+  unitRow.addEventListener('mouseenter', (event: MouseEvent) => {
+    if (shouldSuppressHover(timeline, event)) return;
     chart.highlightKey = unit.key;
     unitRow.classList.add('is-highlighted');
-    drawTimelineCanvasChart(timeline.canvas, chart);
+    drawTimelineCanvasChartForHover(timeline.canvas, chart);
   });
-  unitRow.addEventListener('mouseleave', () => {
+  unitRow.addEventListener('mouseleave', (event: MouseEvent) => {
+    if (shouldSuppressHover(timeline, event)) return;
     delete chart.highlightKey;
     unitRow.classList.remove('is-highlighted');
-    drawTimelineCanvasChart(timeline.canvas, chart);
+    drawTimelineCanvasChartForHover(timeline.canvas, chart);
   });
   return unitRow;
 }
@@ -246,7 +254,7 @@ export function removeArmyUnitLegend(timeline: TimelineElements | null | undefin
       basis.style.overflow = '';
       basis.style.minWidth = '';
     }
-    const nameEl = node.querySelector<HTMLElement>('.font-bold, [class*="font-bold"]');
+    const nameEl = node.querySelector<HTMLElement>(TIMELINE_PLAYER_NAME_SELECTOR);
     if (nameEl) {
       nameEl.style.maxWidth = '';
       nameEl.style.overflow = '';

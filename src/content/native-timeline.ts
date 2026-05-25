@@ -1,8 +1,9 @@
-import { normalizeName } from './dom.ts';
+import { normalizeName, TIMELINE_PLAYER_NAME_SELECTOR, TIMELINE_PLAYER_ROW_SELECTOR } from './dom.ts';
 import { extractAgeUps, drawAgeUpOverlay } from './age-up.ts';
 import {
   removeArmyUnitLegend,
 } from './legend.ts';
+import { detachArmyModeToggle } from './army-mode.ts';
 import { detachCanvasTooltip } from './tooltip.ts';
 import {
   detachTimelineHoverGuard,
@@ -11,7 +12,7 @@ import {
 import type { CanvasExtensions, GameSummary, TimelineElements } from './types.ts';
 
 export function nativeTimelinePlayerColors(timeline: TimelineElements): Map<string, string> {
-  const rows = [...timeline.root.querySelectorAll<HTMLElement>('.flex.items-center.cursor-pointer')];
+  const rows = [...timeline.root.querySelectorAll<HTMLElement>(TIMELINE_PLAYER_ROW_SELECTOR)];
   const colors = new Map<string, string>();
   for (const row of rows) {
     const name = nativePlayerRowText(row);
@@ -24,7 +25,7 @@ export function nativeTimelinePlayerColors(timeline: TimelineElements): Map<stri
 
 export function nativeTimelinePlayerOrder(timeline: TimelineElements, summary: GameSummary): string[] {
   const players = Array.isArray(summary.players) ? summary.players : [];
-  const rows = [...timeline.root.querySelectorAll<HTMLElement>('.flex.items-center.cursor-pointer')];
+  const rows = [...timeline.root.querySelectorAll<HTMLElement>(TIMELINE_PLAYER_ROW_SELECTOR)];
   const order: string[] = [];
   for (const row of rows) {
     const text = normalizeName(nativePlayerRowText(row));
@@ -45,16 +46,18 @@ export function nativePlayerRowText(row: Element): string {
 
 export function restoreNativeTimeline(timeline: TimelineElements): void {
   removeArmyUnitLegend(timeline);
+  detachArmyModeToggle(timeline);
   detachTimelineHoverGuard(timeline);
   detachCanvasTooltip(timeline.canvas);
   detachPlayerToggle(timeline);
-  const nativeCanvas = timeline.__aoe4NativeCanvas;
+  const nativeCanvas = timeline.__aoe4NativeCanvas || timeline.chartBox?.__aoe4NativeCanvas;
   if (nativeCanvas && timeline.canvas !== nativeCanvas) {
     const currentCanvas = timeline.canvas;
     if (currentCanvas?.parentElement) {
       currentCanvas.parentElement.replaceChild(nativeCanvas, currentCanvas);
     }
     timeline.canvas = nativeCanvas;
+    timeline.__aoe4NativeCanvas = nativeCanvas;
   }
   timeline.canvas.style.display = '';
   if (timeline.heading.dataset.aoe4NativeTitle) {

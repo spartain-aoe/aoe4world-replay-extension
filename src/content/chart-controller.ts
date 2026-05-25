@@ -37,12 +37,16 @@ import {
   removeArmyUnitLegend,
   refreshArmyLegendNames,
 } from './legend.ts';
+import { renderArmyModeToggle, detachArmyModeToggle } from './army-mode.ts';
 import { clearRangeState, syncRangeUi } from './range.ts';
 import { attachCanvasTooltip, detachCanvasTooltip } from './tooltip.ts';
 import {
   attachTimelineHoverGuard,
   attachPlayerToggle,
+  suppressHoverUntilPointerMove,
 } from './interactions.ts';
+import { clearDetailsTableMetrics, scheduleDetailsTableMetrics } from './details-metrics.ts';
+import { TIMELINE_NATIVE_GATE_CSS } from '../shared/timeline-gate-css.ts';
 import type {
   AgeUp,
   Chart,
@@ -59,12 +63,69 @@ type BuildOrderElement = HTMLElement & {
 let summaryChartUrl = '';
 let summaryChartGameId = '';
 let summaryChartRouteToken = 0;
+let colorOnlyGameId = '';
+const SUMMARY_DEFAULT_GATE_STYLE_ID = '__aoe4-summary-default-gate';
 
-function clearActiveSummaryRoute(): void {
+function ensureSummaryDefaultGateStyle(): void {
+  if (document.getElementById(SUMMARY_DEFAULT_GATE_STYLE_ID)) return;
+  const style = document.createElement('style');
+  style.id = SUMMARY_DEFAULT_GATE_STYLE_ID;
+  style.textContent = TIMELINE_NATIVE_GATE_CSS;
+  (document.head || document.documentElement).appendChild(style);
+}
+
+function removeSummaryDefaultGateStyle(): void {
+  document.getElementById(SUMMARY_DEFAULT_GATE_STYLE_ID)?.remove();
+}
+
+function maskNativeArmyOption(timeline: TimelineElements, label: string): void {
+  const option = timeline.select.querySelector<HTMLOptionElement>('option[value="army"]');
+  if (!option) return;
+  if (!option.dataset.aoe4NativeText) option.dataset.aoe4NativeText = option.textContent || 'Army';
+  option.textContent = label;
+}
+
+function restoreNativeArmyOption(timeline: TimelineElements | null | undefined): void {
+  const option = timeline?.select?.querySelector<HTMLOptionElement>('option[value="army"]');
+  if (!option?.dataset.aoe4NativeText) return;
+  option.textContent = option.dataset.aoe4NativeText;
+  delete option.dataset.aoe4NativeText;
+}
+
+function clearActiveSummaryRoute(clearColors = true): void {
   summaryChartUrl = '';
   summaryChartGameId = '';
   summaryChartRouteToken++;
-  sendChartInjectorControlMessage({ source: 'aoe4-color-ext', type: 'clear-colors' });
+  removeSummaryDefaultGateStyle();
+  clearDetailsTableMetrics();
+  if (clearColors) sendChartInjectorControlMessage({ source: 'aoe4-color-ext', type: 'clear-colors' });
+}
+
+function removeSummaryChartsFromTimeline(timeline: TimelineElements | null | undefined): void {
+  if (!timeline) return;
+  restoreNativeArmyOption(timeline);
+  clearRangeState(timeline.chartBox);
+  restoreNativeTimeline(timeline);
+  timeline.select.querySelector('optgroup[data-aoe4-summary-plus]')?.remove();
+  delete timeline.select.__aoe4SummaryActiveValue;
+  delete timeline.select.__aoe4SummaryCharts;
+  delete timeline.select.__aoe4SummaryDefaultGameId;
+}
+
+function ensureColorOnlyReplayColors(gameId: string): void {
+  if (!recolorEnabled()) return;
+  if (colorOnlyGameId === gameId) return;
+  colorOnlyGameId = gameId;
+  const profileId = getProfileIdFromUrl(window.location.href);
+  beginReplayColorLoad(gameId, { profileId }).then((result) => {
+    if (getGameIdFromUrl(window.location.href) !== gameId || chartsEnabled()) return;
+    if (result.ok) {
+      if (!applyReplayPlayersToNativeChart(result.players)) releaseNativeChartColorGate();
+      return;
+    }
+    releaseNativeChartColorGate();
+    warnReplayColorFailure(gameId, result);
+  });
 }
 
 function isCurrentGameRequest(timeline: TimelineElements, gameId: string | undefined, routeToken: number | undefined): boolean {
@@ -82,8 +143,12 @@ function isCurrentGameRequest(timeline: TimelineElements, gameId: string | undef
 export function tryAddSummaryCharts(): void {
   const gameId = getGameIdFromUrl(window.location.href);
   if (!chartsEnabled()) {
-    if (gameId) releaseNativeChartColorGate();
-    if (summaryChartGameId) clearActiveSummaryRoute();
+    const timeline = findTimelineElements() as TimelineElements | null;
+    removeSummaryChartsFromTimeline(timeline);
+    clearDetailsTableMetrics();
+    if (summaryChartGameId) clearActiveSummaryRoute(!recolorEnabled());
+    if (gameId && recolorEnabled()) ensureColorOnlyReplayColors(gameId);
+    else if (gameId) releaseNativeChartColorGate();
     return;
   }
   if (!gameId) {
@@ -121,6 +186,7 @@ export function tryAddSummaryCharts(): void {
   timeline.root.__aoe4GameId = gameId;
   timeline.root.__aoe4RouteToken = routeToken;
   delete timeline.root.__aoe4ColorsRequestedFor;
+  ensureSummaryDefaultGateStyle();
 
   const profileId = getProfileIdFromUrl(window.location.href);
   const replayColorsPromise = recolorEnabled()
@@ -146,11 +212,31 @@ export function tryAddSummaryCharts(): void {
         if (timeline.root.dataset.aoe4SummaryPlusPendingUrl === url) {
           delete timeline.root.dataset.aoe4SummaryPlusPendingUrl;
         }
+        removeSummaryDefaultGateStyle();
         return;
       }
+      scheduleDetailsTableMetrics(summary, gameId);
       const replayColors = await replayColorsPromise;
-      if (!isCurrentGameRequest(timeline, gameId, routeToken)) return;
-      applyReplayColorResult(summary, replayColors, gameId);
+      if (!isCurrentGameRequest(timeline, gameId, routeToken)) {
+        if (timeline.root.dataset.aoe4SummaryPlusPendingUrl === url) {
+          delete timeline.root.dataset.aoe4SummaryPlusPendingUrl;
+        }
+        removeSummaryDefaultGateStyle();
+        return;
+      }
+      if (replayColors.ok) {
+        summary._aoe4ReplayPlayers = replayColors.players;
+      } else {
+        warnReplayColorFailure(gameId, replayColors);
+      }
+      await ensurePbgidMap();
+      if (!isCurrentGameRequest(timeline, gameId, routeToken)) {
+        if (timeline.root.dataset.aoe4SummaryPlusPendingUrl === url) {
+          delete timeline.root.dataset.aoe4SummaryPlusPendingUrl;
+        }
+        removeSummaryDefaultGateStyle();
+        return;
+      }
       if (timeline.root.dataset.aoe4SummaryPlusPendingUrl === url) {
         delete timeline.root.dataset.aoe4SummaryPlusPendingUrl;
       }
@@ -167,6 +253,7 @@ export function tryAddSummaryCharts(): void {
         return;
       }
       releaseNativeChartColorGate();
+      removeSummaryDefaultGateStyle();
       console.warn('[replay] Failed to load AoE4 World summary metrics:', message);
       if (timeline.root.dataset.aoe4SummaryPlusUrl === url) {
         delete timeline.root.dataset.aoe4SummaryPlusUrl;
@@ -175,22 +262,6 @@ export function tryAddSummaryCharts(): void {
         delete timeline.root.dataset.aoe4SummaryPlusPendingUrl;
       }
     });
-}
-
-function applyReplayColorResult(
-  summary: GameSummary,
-  result: ReplayColorLoadResult,
-  gameId: string,
-): boolean {
-  if (result.ok) {
-    summary._aoe4ReplayPlayers = result.players;
-    if (applyReplayColorsToNativeChart(summary)) return true;
-    releaseNativeChartColorGate();
-    return false;
-  }
-  releaseNativeChartColorGate();
-  warnReplayColorFailure(gameId, result);
-  return false;
 }
 
 function warnReplayColorFailure(gameId: string, result: ReplayColorLoadResult): void {
@@ -253,7 +324,9 @@ function installTimelineMetrics(timeline: TimelineElements, summary: GameSummary
     optgroup = document.createElement('optgroup');
     optgroup.dataset.aoe4SummaryPlus = 'true';
     optgroup.label = 'Summary+';
-    timeline.select.appendChild(optgroup);
+  }
+  if (timeline.select.firstElementChild !== optgroup) {
+    timeline.select.insertBefore(optgroup, timeline.select.firstElementChild);
   }
   optgroup.replaceChildren();
   for (const chart of charts) {
@@ -270,8 +343,23 @@ function installTimelineMetrics(timeline: TimelineElements, summary: GameSummary
     timeline.select.addEventListener('change', handler, true);
   }
 
+  const defaultChart = charts[0];
+  if (defaultChart && timeline.select.__aoe4SummaryDefaultGameId !== gameId) {
+    timeline.select.__aoe4SummaryDefaultGameId = gameId;
+    timeline.select.__aoe4SummaryNativeResetSuppressUntil = Date.now() + 4000;
+    clearRangeState(timeline.chartBox);
+    hideNativeAgeUpOverlay(timeline);
+    timeline.select.__aoe4SummaryActiveValue = defaultChart.value;
+    renderTimelineMetric(timeline, defaultChart);
+    syncSelectValue(timeline.select, defaultChart.value, () => !!timeline.select.__aoe4SummaryCharts?.has(defaultChart.value));
+    ensureReplayPlayerColors(timeline);
+  }
+
   ensureBuildOrderObserver(timeline);
-  if (!timeline.select.__aoe4SummaryCharts?.has(timeline.select.value)) {
+  const activeSummaryValue = timeline.select.__aoe4SummaryActiveValue || '';
+  if (activeSummaryValue && timeline.select.__aoe4SummaryCharts?.has(activeSummaryValue)) {
+    hideNativeAgeUpOverlay(timeline);
+  } else if (!timeline.select.__aoe4SummaryCharts?.has(timeline.select.value)) {
     showNativeAgeUpOverlay(timeline);
   } else {
     hideNativeAgeUpOverlay(timeline);
@@ -346,10 +434,10 @@ function ensureBuildOrderObserver(timeline: TimelineElements): void {
 
 function buildTimelineChartCatalog(summary: GameSummary, nativeColors: Map<string, string>, nativePlayerOrder: string[] = []): Chart[] {
   const charts = ([] as Chart[])
-    .concat(buildResourceGatheredCharts(summary, nativeColors) as Chart[])
     .concat(buildArmyCharts(summary, nativeColors, nativePlayerOrder) as Chart[])
     .concat(buildArmyValueLeadCharts(summary, nativeColors, nativePlayerOrder) as Chart[])
-    .concat(buildDestroyedValueCharts(summary, nativeColors, nativePlayerOrder) as Chart[]);
+    .concat(buildDestroyedValueCharts(summary, nativeColors, nativePlayerOrder) as Chart[])
+    .concat(buildResourceGatheredCharts(summary, nativeColors) as Chart[]);
   const ageUps = extractAgeUps(summary, nativeColors) as AgeUp[];
   for (const chart of charts) {
     if (chart.type === 'army') precomputeStackedValues(chart.data.series);
@@ -410,6 +498,20 @@ function handleTimelineMetricEvent(event: Event, timeline: TimelineElements): vo
     clearRangeState(timeline.chartBox);
   }
   if (!chart) {
+    const previousSummaryValue = previousValue || '';
+    const suppressSyntheticNativeReset = Boolean(
+      previousSummaryValue &&
+      timeline.select.__aoe4SummaryCharts?.has(previousSummaryValue) &&
+      event.isTrusted === false &&
+      Date.now() < (timeline.select.__aoe4SummaryNativeResetSuppressUntil || 0)
+    );
+    if (suppressSyntheticNativeReset) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      syncSelectValue(timeline.select, previousSummaryValue, () => !!timeline.select.__aoe4SummaryCharts?.has(previousSummaryValue));
+      return;
+    }
+    restoreNativeArmyOption(timeline);
     delete timeline.select.__aoe4SummaryActiveValue;
     restoreNativeTimeline(timeline);
     showNativeAgeUpOverlay(timeline);
@@ -457,14 +559,35 @@ function ensureReplayPlayerColors(timeline: TimelineElements): void {
 }
 
 function syncSelectValue(select: TimelineElements['select'], value: string, isValid: () => boolean): void {
+  const token = Symbol('aoe4-select-sync');
+  select.__aoe4SummarySelectSyncToken = token;
   const apply = (): void => {
-    if (isValid()) select.value = value;
+    if (select.__aoe4SummarySelectSyncToken !== token) return;
+    if (!isValid()) return;
+    if (value.startsWith('aoe4plus:') && select.__aoe4SummaryActiveValue !== value) return;
+    if (select.value === value) return;
+    select.value = value;
   };
   apply();
-  requestAnimationFrame(apply);
+  const startedAt = Date.now();
+  const syncFrame = (): void => {
+    apply();
+    if (
+      value.startsWith('aoe4plus:') &&
+      select.__aoe4SummarySelectSyncToken === token &&
+      select.__aoe4SummaryActiveValue === value &&
+      Date.now() - startedAt < 5000
+    ) {
+      requestAnimationFrame(syncFrame);
+    }
+  };
+  requestAnimationFrame(syncFrame);
   setTimeout(apply, 0);
   setTimeout(apply, 150);
   setTimeout(apply, 500);
+  setTimeout(apply, 1000);
+  setTimeout(apply, 2000);
+  setTimeout(apply, 3500);
 }
 
 function ensureSummaryCanvas(timeline: TimelineElements): TimelineElements['canvas'] {
@@ -482,6 +605,8 @@ function ensureSummaryCanvas(timeline: TimelineElements): TimelineElements['canv
   if (timeline.chartBox) timeline.chartBox.__aoe4HoverActive = false;
   oldCanvas.__aoe4HoverActive = false;
   if (!timeline.__aoe4NativeCanvas) timeline.__aoe4NativeCanvas = oldCanvas;
+  if (!timeline.chartBox.__aoe4NativeCanvas) timeline.chartBox.__aoe4NativeCanvas = timeline.__aoe4NativeCanvas;
+  timeline.__aoe4NativeCanvas = timeline.chartBox.__aoe4NativeCanvas;
   const newCanvas = document.createElement('canvas') as TimelineElements['canvas'];
   for (const name of oldCanvas.getAttributeNames()) {
     newCanvas.setAttribute(name, oldCanvas.getAttribute(name) as string);
@@ -496,14 +621,23 @@ function ensureSummaryCanvas(timeline: TimelineElements): TimelineElements['canv
 }
 
 function renderTimelineMetric(timeline: TimelineElements, chart: Chart): void {
+  removeSummaryDefaultGateStyle();
+  hideNativeAgeUpOverlay(timeline);
+  suppressHoverUntilPointerMove(timeline);
+  maskNativeArmyOption(timeline, chart.title);
   if (!timeline.heading.dataset.aoe4NativeTitle) {
     timeline.heading.dataset.aoe4NativeTitle = timeline.heading.textContent || '';
   }
   timeline.heading.textContent = chart.title;
   const canvas = ensureSummaryCanvas(timeline);
   canvas.style.display = '';
-  if (chart.type === 'army') renderArmyUnitLegend(timeline, chart);
-  else removeArmyUnitLegend(timeline);
+  if (chart.type === 'army') {
+    renderArmyUnitLegend(timeline, chart);
+    renderArmyModeToggle(timeline, chart);
+  } else {
+    removeArmyUnitLegend(timeline);
+    detachArmyModeToggle(timeline);
+  }
   animateTimelineCanvasChart(canvas, chart);
   attachTimelineHoverGuard(timeline, chart);
   attachCanvasTooltip(canvas, chart, timeline);

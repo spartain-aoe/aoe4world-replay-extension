@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { findUnitGroupForUpgrade } from '../../src/content/unit-mapping.ts';
+import { findUnitGroupForUpgrade, isBuildingUpgrade } from '../../src/content/unit-mapping.ts';
+import { pbgidTechsMap } from '../../src/content/pbgid-map.ts';
 
 function makeGrouped(entries) {
   const m = new Map();
@@ -71,4 +72,49 @@ test('findUnitGroupForUpgrade: iconAliasMap routes legacy icon → canonical gro
   const aliasMap = new Map([['lancer', 'royal-knight']]);
   const got = findUnitGroupForUpgrade('upgrades/lancer_3', null, grouped, null, aliasMap);
   assert.equal(got?.label, 'Royal Knight');
+});
+
+test('isBuildingUpgrade identifies emplacement/tower defensive upgrades', () => {
+  assert.equal(isBuildingUpgrade('technologies/springald_emplacement_3', 'Springald Emplacement'), true);
+  assert.equal(isBuildingUpgrade('technologies/cannon-emplacement-4.png', 'Cannon Emplacement'), true);
+  assert.equal(isBuildingUpgrade('icons/races/common/upgrades/springald', 'Springald'), true);
+  assert.equal(isBuildingUpgrade('technologies/handcannon_slits_2', 'Handcannon Slits'), true);
+  assert.equal(isBuildingUpgrade('technologies/tower_shields_4', 'Tower Shields'), true);
+  assert.equal(isBuildingUpgrade('technologies/springald_crews_3', 'Springald Crews'), false);
+  assert.equal(isBuildingUpgrade('upgrades/tower_elephant_3', 'Elite Tower Elephant'), false);
+});
+
+test('findUnitGroupForUpgrade: omits Springald Emplacement from Springald unit dots', () => {
+  const grouped = makeGrouped([['springald', 'Springald']]);
+  const got = findUnitGroupForUpgrade('technologies/springald_emplacement_3', 'Springald Emplacement', grouped);
+  assert.equal(got, null);
+});
+
+test('findUnitGroupForUpgrade: omits outpost Springald upgrades that only expose generic springald icon/name', () => {
+  const grouped = makeGrouped([['springald', 'Springald']]);
+  const got = findUnitGroupForUpgrade('icons/races/common/upgrades/springald', 'Springald', grouped, 127329);
+  assert.equal(got, null);
+});
+
+test('findUnitGroupForUpgrade: omits building upgrades even when pbgid tech map has the canonical key', () => {
+  const previous = pbgidTechsMap.get(127371);
+  pbgidTechsMap.set(127371, {
+    n: 'Springald Emplacement',
+    k: 'springald-emplacement',
+    i: 'https://data.aoe4world.com/images/technologies/springald-emplacement-3.png',
+  });
+  try {
+    const grouped = makeGrouped([['springald', 'Springald']]);
+    const got = findUnitGroupForUpgrade('technologies/springald_3', 'Springald', grouped, 127371);
+    assert.equal(got, null);
+  } finally {
+    if (previous) pbgidTechsMap.set(127371, previous);
+    else pbgidTechsMap.delete(127371);
+  }
+});
+
+test('findUnitGroupForUpgrade: still allows non-building Springald unit upgrades', () => {
+  const grouped = makeGrouped([['springald', 'Springald']]);
+  const got = findUnitGroupForUpgrade('technologies/springald_crews_3', 'Springald Crews', grouped);
+  assert.equal(got?.label, 'Springald');
 });

@@ -38,7 +38,7 @@ export function updateLegendLive(chart: Chart, index: number, closestKey: string
     }
     node.rowEl.style.display = '';
 
-    const text = String(Math.round(value));
+    const text = Math.round(value).toLocaleString();
     if (node.totalEl.textContent !== text) node.totalEl.textContent = text;
     if (delta === 0) setDeltaCells(node, null, null);
     else if (delta > 0) setDeltaCells(node, delta, 0);
@@ -52,7 +52,7 @@ export function updateLegendLive(chart: Chart, index: number, closestKey: string
     const parts: string[] = [];
     for (const u of meta.units) {
       const val = Math.abs(u.values[index] || 0);
-      if (val > 0) parts.push(`${u.unitLabel || u.label}: ${Math.round(val)}`);
+      if (val > 0) parts.push(`${u.unitLabel || u.label}: ${Math.round(val).toLocaleString()}`);
     }
     const text = parts.join(', ') || '—';
     if (meta.summaryLabelEl.textContent !== text) meta.summaryLabelEl.textContent = text;
@@ -88,8 +88,8 @@ export function setDeltaCells(node: LegendUnitNode | null | undefined, trained: 
     node.deltaLostEl.classList.remove('is-zero');
     return;
   }
-  const t = String(Math.round(trained || 0));
-  const l = String(Math.round(lost || 0));
+  const t = Math.round(trained || 0).toLocaleString();
+  const l = Math.round(lost || 0).toLocaleString();
   if (node.deltaTrainedEl.textContent !== t) node.deltaTrainedEl.textContent = t;
   if (node.deltaLostEl.textContent !== l) node.deltaLostEl.textContent = l;
   node.deltaTrainedEl.classList.toggle('is-zero', (trained || 0) === 0);
