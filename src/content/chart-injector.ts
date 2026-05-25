@@ -1,3 +1,5 @@
+import { TIMELINE_NATIVE_GATE_CSS } from '../shared/timeline-gate-css.ts';
+
 (() => {
   const WINDOW_FLAG = '__aoe4ColorExtInjectorLoaded';
   type InjectorWindow = Window & { [WINDOW_FLAG]?: boolean };
@@ -82,18 +84,7 @@
     if (document.getElementById(CHART_GATE_STYLE_ID)) return;
     const style = document.createElement('style');
     style.id = CHART_GATE_STYLE_ID;
-    style.textContent = `
-      body:has(select option[value="army"]):has(select option[value="workers"])
-        canvas:not([data-aoe4-summary-canvas]):not(.aoe4-ageup-overlay),
-      div:has(select option[value="army"]):has(select option[value="workers"])
-        canvas:not([data-aoe4-summary-canvas]):not(.aoe4-ageup-overlay) {
-        opacity: 0 !important;
-      }
-      body:has(select option[value="army"]):has(select option[value="workers"])
-        .flex.items-center.cursor-pointer:not([data-aoe4-legend-injected]) {
-        opacity: 0 !important;
-      }
-    `;
+    style.textContent = TIMELINE_NATIVE_GATE_CSS;
     (document.head || document.documentElement).appendChild(style);
   }
 

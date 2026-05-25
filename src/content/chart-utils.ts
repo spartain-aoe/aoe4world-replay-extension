@@ -23,6 +23,10 @@ export function buildSampleLabels(duration: number, step: number): number[] {
 export function activeCountValues(labels: readonly number[], finished: readonly number[], destroyed: readonly number[]): number[] {
   const created = [...finished].sort((a, b) => a - b);
   const lost = [...destroyed].sort((a, b) => a - b);
+  return activeCountValuesFromSorted(labels, created, lost);
+}
+
+export function activeCountValuesFromSorted(labels: readonly number[], created: readonly number[], lost: readonly number[]): number[] {
   let createdIndex = 0;
   let lostIndex = 0;
   return labels.map(time => {
@@ -43,16 +47,32 @@ export function activeValueValues(
 ): number[] {
   const created = finished.map((t, i) => ({ t, c: finishedCosts[i] || 0 })).sort((a, b) => a.t - b.t);
   const lost = destroyed.map((t, i) => ({ t, c: destroyedCosts[i] || 0 })).sort((a, b) => a.t - b.t);
+  return activeValueValuesFromSorted(
+    labels,
+    created.map(event => event.t),
+    created.map(event => event.c),
+    lost.map(event => event.t),
+    lost.map(event => event.c),
+  );
+}
+
+export function activeValueValuesFromSorted(
+  labels: readonly number[],
+  finished: readonly number[],
+  finishedCosts: readonly number[],
+  destroyed: readonly number[],
+  destroyedCosts: readonly number[]
+): number[] {
   let createdIndex = 0;
   let lostIndex = 0;
   let value = 0;
   return labels.map(time => {
-    while (createdIndex < created.length && created[createdIndex].t <= time) {
-      value += created[createdIndex].c;
+    while (createdIndex < finished.length && finished[createdIndex] <= time) {
+      value += finishedCosts[createdIndex] || 0;
       createdIndex++;
     }
-    while (lostIndex < lost.length && lost[lostIndex].t <= time) {
-      value -= lost[lostIndex].c;
+    while (lostIndex < destroyed.length && destroyed[lostIndex] <= time) {
+      value -= destroyedCosts[lostIndex] || 0;
       lostIndex++;
     }
     return Math.max(0, value);

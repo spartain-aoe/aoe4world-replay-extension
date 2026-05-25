@@ -1,4 +1,4 @@
-import { normalizeName } from './dom.ts';
+import { normalizeName, TIMELINE_PLAYER_NAME_SELECTOR, TIMELINE_PLAYER_ROW_SELECTOR } from './dom.ts';
 import { extractAgeUps, drawAgeUpOverlay } from './age-up.ts';
 import {
   removeArmyUnitLegend,
@@ -12,7 +12,7 @@ import {
 import type { CanvasExtensions, GameSummary, TimelineElements } from './types.ts';
 
 export function nativeTimelinePlayerColors(timeline: TimelineElements): Map<string, string> {
-  const rows = [...timeline.root.querySelectorAll<HTMLElement>('.flex.items-center.cursor-pointer')];
+  const rows = [...timeline.root.querySelectorAll<HTMLElement>(TIMELINE_PLAYER_ROW_SELECTOR)];
   const colors = new Map<string, string>();
   for (const row of rows) {
     const name = nativePlayerRowText(row);
@@ -25,7 +25,7 @@ export function nativeTimelinePlayerColors(timeline: TimelineElements): Map<stri
 
 export function nativeTimelinePlayerOrder(timeline: TimelineElements, summary: GameSummary): string[] {
   const players = Array.isArray(summary.players) ? summary.players : [];
-  const rows = [...timeline.root.querySelectorAll<HTMLElement>('.flex.items-center.cursor-pointer')];
+  const rows = [...timeline.root.querySelectorAll<HTMLElement>(TIMELINE_PLAYER_ROW_SELECTOR)];
   const order: string[] = [];
   for (const row of rows) {
     const text = normalizeName(nativePlayerRowText(row));

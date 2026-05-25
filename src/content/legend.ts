@@ -1,4 +1,4 @@
-import { findCivIconPosition } from './dom.ts';
+import { findCivIconPosition, TIMELINE_PLAYER_NAME_SELECTOR, TIMELINE_PLAYER_ROW_SELECTOR } from './dom.ts';
 import { armyIconElement, resolveCurrentUnitName } from './unit-icons.ts';
 import { drawTimelineCanvasChart, drawTimelineCanvasChartForHover } from './canvas-render.ts';
 import { getActiveRange, applyRangeLegend } from './range.ts';
@@ -48,10 +48,10 @@ export function renderArmyUnitLegendNow(timeline: TimelineElements, chart: Chart
     byPlayer.get(item.playerName)?.push(item);
   }
 
-  const playerRows = [...timeline.root.querySelectorAll<HTMLElement>('.flex.items-center.cursor-pointer')];
+  const playerRows = [...timeline.root.querySelectorAll<HTMLElement>(TIMELINE_PLAYER_ROW_SELECTOR)];
   const rowByPlayerName = new Map<string, HTMLElement>();
   for (const candidate of playerRows) {
-    const candidateNameEl = candidate.querySelector<HTMLElement>('.font-bold, [class*="font-bold"]');
+    const candidateNameEl = candidate.querySelector<HTMLElement>(TIMELINE_PLAYER_NAME_SELECTOR);
     const rawName = (candidateNameEl?.textContent || '').trim().toLowerCase();
     if (rawName && !rowByPlayerName.has(rawName)) rowByPlayerName.set(rawName, candidate);
   }
@@ -85,7 +85,7 @@ export function renderArmyUnitLegendNow(timeline: TimelineElements, chart: Chart
     row.style.minWidth = '0';
     row.style.overflow = 'hidden';
 
-    const nameEl = row.querySelector<HTMLElement>('.font-bold, [class*="font-bold"]');
+    const nameEl = row.querySelector<HTMLElement>(TIMELINE_PLAYER_NAME_SELECTOR);
     if (nameEl) {
       nameEl.style.maxWidth = '8rem';
       nameEl.style.overflow = 'hidden';
@@ -254,7 +254,7 @@ export function removeArmyUnitLegend(timeline: TimelineElements | null | undefin
       basis.style.overflow = '';
       basis.style.minWidth = '';
     }
-    const nameEl = node.querySelector<HTMLElement>('.font-bold, [class*="font-bold"]');
+    const nameEl = node.querySelector<HTMLElement>(TIMELINE_PLAYER_NAME_SELECTOR);
     if (nameEl) {
       nameEl.style.maxWidth = '';
       nameEl.style.overflow = '';

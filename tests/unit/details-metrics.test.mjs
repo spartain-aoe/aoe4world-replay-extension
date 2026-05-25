@@ -6,6 +6,7 @@ import {
   formatIdleTcTime,
   installDetailsTableMetrics,
   scheduleDetailsTableMetrics,
+  clearDetailsTableMetrics,
 } from '../../src/content/details-metrics.ts';
 
 test('formatters render table values', () => {
@@ -82,6 +83,104 @@ test('installDetailsTableMetrics inserts headers and row cells after APM', () =>
   assert.deepEqual(
     [...document.querySelectorAll('tbody td')].map(td => td.textContent.trim()),
     ['P1', '100', '50', '10', '55', '0:10', '0'],
+  );
+});
+
+test('clearDetailsTableMetrics removes Idle TC headers/cells and restores colspan', () => {
+  const { document, window } = parseHTML(`
+    <table>
+      <thead>
+        <tr><th></th><th colspan="1">Score</th><th colspan="1">Resources Spent</th><th colspan="1">Max. Workers</th><th colspan="1">Misc</th><th colspan="1">Sacred Sites</th></tr>
+        <tr><th></th><th>Total</th><th>Food</th><th>Villagers</th><th>APM</th><th>Capt.</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><a href="/players/1">P1</a></td><td>100</td><td>50</td><td>10</td><td>55</td><td>0</td></tr>
+      </tbody>
+    </table>
+  `);
+  globalThis.document = document;
+  globalThis.window = window;
+
+  assert.equal(installDetailsTableMetrics({
+    players: [{ profileId: 1, name: 'P1' }],
+  }, [{ profileId: 1, name: 'P1', townCenterIdleSeconds: 10 }]), true);
+
+  clearDetailsTableMetrics();
+
+  assert.equal(document.querySelectorAll('[data-aoe4-details-metric]').length, 0);
+  assert.equal(document.querySelector('thead tr:first-child th:nth-child(5)').getAttribute('colspan'), '1');
+  assert.deepEqual(
+    [...document.querySelectorAll('tbody td')].map(td => td.textContent.trim()),
+    ['P1', '100', '50', '10', '55', '0'],
+  );
+});
+
+test('installDetailsTableMetrics is idempotent for unchanged metrics', () => {
+  const { document, window } = parseHTML(`
+    <table>
+      <thead>
+        <tr><th></th><th colspan="1">Score</th><th colspan="1">Resources Spent</th><th colspan="1">Max. Workers</th><th colspan="1">Misc</th><th colspan="1">Sacred Sites</th></tr>
+        <tr><th></th><th>Total</th><th>Food</th><th>Villagers</th><th>APM</th><th>Capt.</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><a href="/players/1">P1</a></td><td>100</td><td>50</td><td>10</td><td>55</td><td>0</td></tr>
+      </tbody>
+    </table>
+  `);
+  globalThis.document = document;
+  globalThis.window = window;
+  const summary = { players: [{ profileId: 1, name: 'P1' }] };
+  const stats = [{ profileId: 1, name: 'P1', townCenterIdleSeconds: 10 }];
+
+  assert.equal(installDetailsTableMetrics(summary, stats), true);
+  const header = document.querySelector('[data-aoe4-details-metric="idle-tc"]');
+  const cell = document.querySelector('td[data-aoe4-details-metric="idle-tc"]');
+  header.dataset.marker = 'same-header';
+  cell.dataset.marker = 'same-cell';
+
+  assert.equal(installDetailsTableMetrics(summary, stats), true);
+
+  assert.equal(document.querySelector('[data-aoe4-details-metric="idle-tc"]').dataset.marker, 'same-header');
+  assert.equal(document.querySelector('td[data-aoe4-details-metric="idle-tc"]').dataset.marker, 'same-cell');
+});
+
+test('clearDetailsTableMetrics cancels delayed schedule retries', async () => {
+  const { document, window } = parseHTML(`
+    <table>
+      <thead>
+        <tr><th></th><th colspan="1">Score</th><th colspan="1">Resources Spent</th><th colspan="1">Max. Workers</th><th colspan="1">Misc</th><th colspan="1">Sacred Sites</th></tr>
+        <tr><th></th><th>Total</th><th>Food</th><th>Villagers</th><th>APM</th><th>Capt.</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><a href="/players/1">P1</a></td><td>100</td><td>50</td><td>10</td><td>55</td><td>0</td></tr>
+      </tbody>
+    </table>
+  `);
+  Object.defineProperty(window, 'location', {
+    value: new URL('https://aoe4world.com/players/1-P1/games/123'),
+    configurable: true,
+  });
+  globalThis.document = document;
+  globalThis.window = window;
+  globalThis.chrome = {
+    runtime: {
+      sendMessage: (_message, callback) => {
+        setTimeout(() => callback({
+          success: true,
+          players: [{ profileId: 1, name: 'P1', townCenterIdleSeconds: 10 }],
+        }), 25);
+      },
+    },
+  };
+
+  scheduleDetailsTableMetrics({ players: [{ profileId: 1, name: 'P1' }] }, '123');
+  clearDetailsTableMetrics();
+  await new Promise(resolve => setTimeout(resolve, 1800));
+
+  assert.equal(document.querySelectorAll('[data-aoe4-details-metric]').length, 0);
+  assert.deepEqual(
+    [...document.querySelectorAll('tbody td')].map(td => td.textContent.trim()),
+    ['P1', '100', '50', '10', '55', '0'],
   );
 });
 

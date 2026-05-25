@@ -45,7 +45,8 @@ import {
   attachPlayerToggle,
   suppressHoverUntilPointerMove,
 } from './interactions.ts';
-import { scheduleDetailsTableMetrics } from './details-metrics.ts';
+import { clearDetailsTableMetrics, scheduleDetailsTableMetrics } from './details-metrics.ts';
+import { TIMELINE_NATIVE_GATE_CSS } from '../shared/timeline-gate-css.ts';
 import type {
   AgeUp,
   Chart,
@@ -69,18 +70,7 @@ function ensureSummaryDefaultGateStyle(): void {
   if (document.getElementById(SUMMARY_DEFAULT_GATE_STYLE_ID)) return;
   const style = document.createElement('style');
   style.id = SUMMARY_DEFAULT_GATE_STYLE_ID;
-  style.textContent = `
-    body:has(select option[value="army"]):has(select option[value="workers"])
-      canvas:not([data-aoe4-summary-canvas]):not(.aoe4-ageup-overlay),
-    div:has(select option[value="army"]):has(select option[value="workers"])
-      canvas:not([data-aoe4-summary-canvas]):not(.aoe4-ageup-overlay) {
-      opacity: 0 !important;
-    }
-    body:has(select option[value="army"]):has(select option[value="workers"])
-      .flex.items-center.cursor-pointer:not([data-aoe4-legend-injected]) {
-      opacity: 0 !important;
-    }
-  `;
+  style.textContent = TIMELINE_NATIVE_GATE_CSS;
   (document.head || document.documentElement).appendChild(style);
 }
 
@@ -107,6 +97,7 @@ function clearActiveSummaryRoute(clearColors = true): void {
   summaryChartGameId = '';
   summaryChartRouteToken++;
   removeSummaryDefaultGateStyle();
+  clearDetailsTableMetrics();
   if (clearColors) sendChartInjectorControlMessage({ source: 'aoe4-color-ext', type: 'clear-colors' });
 }
 
@@ -154,6 +145,7 @@ export function tryAddSummaryCharts(): void {
   if (!chartsEnabled()) {
     const timeline = findTimelineElements() as TimelineElements | null;
     removeSummaryChartsFromTimeline(timeline);
+    clearDetailsTableMetrics();
     if (summaryChartGameId) clearActiveSummaryRoute(!recolorEnabled());
     if (gameId && recolorEnabled()) ensureColorOnlyReplayColors(gameId);
     else if (gameId) releaseNativeChartColorGate();
@@ -559,9 +551,13 @@ function ensureReplayPlayerColors(timeline: TimelineElements): void {
 }
 
 function syncSelectValue(select: TimelineElements['select'], value: string, isValid: () => boolean): void {
+  const token = Symbol('aoe4-select-sync');
+  select.__aoe4SummarySelectSyncToken = token;
   const apply = (): void => {
+    if (select.__aoe4SummarySelectSyncToken !== token) return;
     if (!isValid()) return;
     if (value.startsWith('aoe4plus:') && select.__aoe4SummaryActiveValue !== value) return;
+    if (select.value === value) return;
     select.value = value;
   };
   apply();
@@ -570,6 +566,7 @@ function syncSelectValue(select: TimelineElements['select'], value: string, isVa
     apply();
     if (
       value.startsWith('aoe4plus:') &&
+      select.__aoe4SummarySelectSyncToken === token &&
       select.__aoe4SummaryActiveValue === value &&
       Date.now() - startedAt < 5000
     ) {

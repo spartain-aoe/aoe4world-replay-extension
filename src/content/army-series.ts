@@ -14,8 +14,8 @@ import {
 import {
   numericArray,
   maxAbs,
-  activeCountValues,
-  activeValueValues,
+  activeCountValuesFromSorted,
+  activeValueValuesFromSorted,
   collapseChartSeries,
 } from './chart-utils.ts';
 import type { ChartSeries, PlayerSummary, UnitUpgrade } from './types.ts';
@@ -222,8 +222,8 @@ export function buildArmySeriesForPlayer(player: PlayerSummary, labels: number[]
       const destroyedEvents = sortedEventPairs(events.destroyed, events.destroyedCosts);
       const finishedTimes = finishedEvents.times;
       const destroyedTimes = destroyedEvents.times;
-      const countValues = activeCountValues(labels, events.finished, events.destroyed);
-      const valueValues = activeValueValues(labels, events.finished, events.finishedCosts, events.destroyed, events.destroyedCosts);
+      const countValues = activeCountValuesFromSorted(labels, finishedTimes, destroyedTimes);
+      const valueValues = activeValueValuesFromSorted(labels, finishedTimes, finishedEvents.costs, destroyedTimes, destroyedEvents.costs);
       const valueTotal = events.finishedCosts.reduce((sum, c) => sum + (c || 0), 0);
       return {
         label: events.label,

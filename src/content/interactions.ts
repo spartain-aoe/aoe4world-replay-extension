@@ -1,4 +1,4 @@
-import { normalizeName } from './dom.ts';
+import { normalizeName, TIMELINE_PLAYER_NAME_SELECTOR, TIMELINE_PLAYER_ROW_SELECTOR } from './dom.ts';
 import { niceGeometryForChart } from './canvas-geom.ts';
 import { precomputeStackedValues } from './army-series.ts';
 import { drawTimelineCanvasChart, drawTimelineCanvasChartForHover } from './canvas-render.ts';
@@ -94,7 +94,7 @@ export function attachPlayerToggle(timeline: TimelineElements, chart: Chart): vo
   detachPlayerToggle(timeline);
   const summary = timeline.__aoe4Summary;
   const players: PlayerSummary[] = Array.isArray(summary?.players) ? summary.players : [];
-  const rows = [...timeline.root.querySelectorAll<HTMLElement>('.flex.items-center.cursor-pointer')];
+  const rows = [...timeline.root.querySelectorAll<HTMLElement>(TIMELINE_PLAYER_ROW_SELECTOR)];
   const handlers: PlayerToggleHandler[] = [];
   for (const row of rows) {
     const text = normalizeName(nativePlayerRowText(row));
@@ -105,7 +105,7 @@ export function attachPlayerToggle(timeline: TimelineElements, chart: Chart): vo
     if (!player?.name) continue;
     const playerName = player.name;
     const iconWrapper = row.firstElementChild;
-    const nameEl = row.querySelector<HTMLElement>('.font-bold, [class*="font-bold"]');
+    const nameEl = row.querySelector<HTMLElement>(TIMELINE_PLAYER_NAME_SELECTOR);
     const onClick = (e: MouseEvent): void => {
       const target = e.target as (Element & Node) | null;
       if (target?.closest?.('.aoe4-inline-legend-summary, .aoe4-inline-legend-chevron, .aoe4-legend-breakdown')) return;

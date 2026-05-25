@@ -1,5 +1,6 @@
 import { getGameIdFromUrl, normalizeName } from './dom.ts';
 import type { GameSummary } from './types.ts';
+import type { GetStatsMetricsResponse, StatsPlayerMetric } from '../shared/stats-metrics.ts';
 
 export interface DetailsPlayerMetrics {
   name: string;
@@ -7,27 +8,27 @@ export interface DetailsPlayerMetrics {
   idleTcSeconds: number | null;
 }
 
-interface StatsPlayerMetric {
-  playerId?: number;
-  profileId?: number;
-  name?: string;
-  townCenterIdleSeconds?: number;
-}
-
-type StatsMetricsResponse = {
-  success?: boolean;
-  players?: StatsPlayerMetric[];
-  error?: string;
-  rateLimited?: boolean;
-  disabled?: boolean;
-};
-
 const DETAILS_METRIC_ATTR = 'data-aoe4-details-metric';
 const DETAILS_EXTRA_COLUMNS_ATTR = 'data-aoe4-details-extra-columns';
+const DETAILS_FINGERPRINT_ATTR = 'data-aoe4-details-fingerprint';
 const IDLE_TC_METRIC = 'idle-tc';
 const IDLE_TC_TITLE = 'Idle TC time from the official stats telemetry file. Includes overlapping idle time across TC-like producers.';
 
 let detailsInstallToken = 0;
+let detailsTimers: ReturnType<typeof setTimeout>[] = [];
+
+function scheduleDetailsTimer(callback: () => void, delay: number): void {
+  detailsTimers.push(setTimeout(() => {
+    detailsTimers = detailsTimers.filter(timer => timer !== handle);
+    callback();
+  }, delay));
+  const handle = detailsTimers[detailsTimers.length - 1];
+}
+
+function clearDetailsTimers(): void {
+  for (const timer of detailsTimers) clearTimeout(timer);
+  detailsTimers = [];
+}
 
 function finiteNumber(value: unknown): number | null {
   const n = Number(value);
@@ -117,6 +118,15 @@ function setCellColSpan(cell: HTMLTableCellElement, value: number): void {
   cell.setAttribute('colspan', String(value));
 }
 
+function restoreHeaderColSpans(table: HTMLTableElement): void {
+  for (const cell of table.querySelectorAll<HTMLTableCellElement>(`th[${DETAILS_EXTRA_COLUMNS_ATTR}]`)) {
+    const previousExtra = Number(cell.getAttribute(DETAILS_EXTRA_COLUMNS_ATTR)) || 0;
+    const baseSpan = Math.max(1, cellColSpan(cell) - previousExtra);
+    setCellColSpan(cell, baseSpan);
+    cell.removeAttribute(DETAILS_EXTRA_COLUMNS_ATTR);
+  }
+}
+
 function topHeaderForSubHeaderIndex(topRow: HTMLTableRowElement, subHeaderIndex: number): HTMLTableCellElement | null {
   let cursor = 0;
   for (const cell of rowCells(topRow)) {
@@ -203,10 +213,17 @@ function installMetricCells(row: HTMLTableRowElement, apmIndex: number): void {
 export function installDetailsTableMetrics(summary: GameSummary, statsMetrics?: readonly StatsPlayerMetric[]): boolean {
   const table = findDetailsComparisonTable();
   if (!table || tableBodyRows(table).length === 0) return false;
+  const metrics = calculateDetailsPlayerMetrics(summary, statsMetrics);
+  const fingerprint = JSON.stringify(metrics.map(item => [item.profileId, item.name, item.idleTcSeconds]));
+  if (
+    table.getAttribute(DETAILS_FINGERPRINT_ATTR) === fingerprint &&
+    table.querySelector(`[${DETAILS_METRIC_ATTR}="${IDLE_TC_METRIC}"]`)
+  ) {
+    return true;
+  }
   const apmIndex = ensureDetailsHeaders(table);
   if (apmIndex == null) return false;
 
-  const metrics = calculateDetailsPlayerMetrics(summary, statsMetrics);
   const byProfileId = new Map(metrics.filter(item => item.profileId).map(item => [item.profileId, item]));
   const byName = new Map(metrics.map(item => [normalizeName(item.name), item]));
 
@@ -217,18 +234,31 @@ export function installDetailsTableMetrics(summary: GameSummary, statsMetrics?: 
     updateMetricCell(row, IDLE_TC_METRIC, formatIdleTcTime(rowMetrics.idleTcSeconds), IDLE_TC_TITLE);
   }
   table.dataset.aoe4DetailsMetrics = 'true';
+  table.setAttribute(DETAILS_FINGERPRINT_ATTR, fingerprint);
   return true;
+}
+
+export function clearDetailsTableMetrics(): void {
+  detailsInstallToken++;
+  clearDetailsTimers();
+  for (const table of document.querySelectorAll<HTMLTableElement>('table[data-aoe4-details-metrics="true"], table:has([data-aoe4-details-metric])')) {
+    table.querySelectorAll<HTMLElement>(`[${DETAILS_METRIC_ATTR}]`).forEach(cell => cell.remove());
+    restoreHeaderColSpans(table);
+    table.removeAttribute(DETAILS_FINGERPRINT_ATTR);
+    delete table.dataset.aoe4DetailsMetrics;
+  }
 }
 
 export function scheduleDetailsTableMetrics(summary: GameSummary, gameId?: string): void {
   const token = ++detailsInstallToken;
+  clearDetailsTimers();
   let currentStatsMetrics: readonly StatsPlayerMetric[] | undefined;
   const installCurrentMetrics = (): void => {
     installDetailsTableMetrics(summary, currentStatsMetrics);
   };
   const delays = [0, 500, 1500, 4000];
   for (const delay of delays) {
-    setTimeout(() => {
+    scheduleDetailsTimer(() => {
       if (token !== detailsInstallToken) return;
       if (gameId && getGameIdFromUrl(window.location.href) !== gameId) return;
       installCurrentMetrics();
@@ -242,7 +272,7 @@ export function scheduleDetailsTableMetrics(summary: GameSummary, gameId?: strin
 
 function requestStatsMetrics(gameId: string | undefined, token: number, onLoaded: (players: readonly StatsPlayerMetric[]) => void): void {
   if (!gameId || typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) return;
-  chrome.runtime.sendMessage({ type: 'getStatsMetrics', matchId: gameId }, (response: StatsMetricsResponse | undefined) => {
+  chrome.runtime.sendMessage({ type: 'getStatsMetrics', matchId: gameId }, (response: GetStatsMetricsResponse | undefined) => {
     if (token !== detailsInstallToken) return;
     if (getGameIdFromUrl(window.location.href) !== gameId) return;
     if (!response?.success || !Array.isArray(response.players)) return;
@@ -250,7 +280,7 @@ function requestStatsMetrics(gameId: string | undefined, token: number, onLoaded
     onLoaded(players);
     const delays = [0, 500, 1500];
     for (const delay of delays) {
-      setTimeout(() => {
+      scheduleDetailsTimer(() => {
         if (token !== detailsInstallToken) return;
         if (getGameIdFromUrl(window.location.href) !== gameId) return;
         onLoaded(players);

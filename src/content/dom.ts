@@ -1,5 +1,10 @@
 import type { TimelineElements } from './types.ts';
 
+// aoe4world timeline player rows currently use these utility classes. Keep the
+// selectors named so markup drift is localized to this file.
+export const TIMELINE_PLAYER_ROW_SELECTOR = '.flex.items-center.cursor-pointer';
+export const TIMELINE_PLAYER_NAME_SELECTOR = '.font-bold, [class*="font-bold"]';
+
 export function normalizeName(value: unknown): string {
   return String(value || '').trim().toLowerCase();
 }

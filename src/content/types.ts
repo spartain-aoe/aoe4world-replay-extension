@@ -56,7 +56,6 @@ export interface BuildOrderItem {
   unpacked?: number[];
   transformed?: number[];
   count?: number;
-  [key: string]: unknown;
 }
 
 export interface PlayerSummary {
@@ -213,6 +212,7 @@ export interface TimelineElements {
     __aoe4SummaryListenerInstalled?: boolean;
     __aoe4SummaryDefaultGameId?: string;
     __aoe4SummaryNativeResetSuppressUntil?: number;
+    __aoe4SummarySelectSyncToken?: symbol;
   };
   chartBox: HTMLElement & ChartBoxExtensions;
   canvas: HTMLCanvasElement & CanvasExtensions;

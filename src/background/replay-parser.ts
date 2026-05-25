@@ -1,3 +1,15 @@
+import {
+    CHUNKY_MAGIC,
+    asciiSlice,
+    gunzip,
+    readChunkHeader,
+    readI32LE,
+    readU16LE,
+    readU32LE,
+    utf16leSlice,
+    type ChunkHeader,
+} from './chunky.ts';
+
 let DEBUG = false;
 export interface PlayerColorInfo {
     slot: number;
@@ -62,14 +74,6 @@ interface ScannedPlayerId {
     end: number;
     value: string;
 }
-interface ChunkHeader {
-    type: 'FOLD' | 'DATA';
-    id: string;
-    version: number;
-    length: number;
-    dataOffset: number;
-    endOffset: number;
-}
 interface GameSetupPayload {
     payloadStart: number;
     payloadEnd: number;
@@ -97,7 +101,6 @@ export const COLOR_HEX = ['#0162FF', '#F60000', '#FFEE00', '#4DE94C', '#41D8FF',
 const MAX_STRING_LENGTH = 256;
 const FILE_HEADER_SIZE = 0x4C;
 const SECOND_CHUNKY_OFFSET = 0x90;
-const CHUNKY_MAGIC = 'Relic Chunky\r\n\x1a\0';
 const COLOR_OFFSET_AFTER_STEAMID = 14;
 const KNOWN_CIVS = new Set([
     'english', 'french', 'hre', 'holy_roman_empire', 'rus', 'mongol', 'mongols', 'chinese',
@@ -144,46 +147,6 @@ function isPlausibleName(value: string): boolean {
         return false;
     return true;
 }
-async function gunzip(arrayBuffer: ArrayBuffer): Promise<Uint8Array> {
-    if (typeof DecompressionStream === 'undefined') {
-        throw new Error('DecompressionStream not available');
-    }
-    const stream = new Response(arrayBuffer).body!.pipeThrough(new DecompressionStream('gzip'));
-    const reader = stream.getReader();
-    const chunks: Uint8Array[] = [];
-    let total = 0;
-    while (true) {
-        const { value, done } = await reader.read();
-        if (done)
-            break;
-        const chunk = value as Uint8Array;
-        chunks.push(chunk);
-        total += chunk.byteLength;
-    }
-    const out = new Uint8Array(total);
-    let pos = 0;
-    for (const chunk of chunks) {
-        out.set(chunk, pos);
-        pos += chunk.byteLength;
-    }
-    return out;
-}
-function readU16LE(buf: Uint8Array, p: number): number { return buf[p] | (buf[p + 1] << 8); }
-function readU32LE(buf: Uint8Array, p: number): number { return (buf[p] | (buf[p + 1] << 8) | (buf[p + 2] << 16) | (buf[p + 3] << 24)) >>> 0; }
-function readI32LE(buf: Uint8Array, p: number): number { return (buf[p] | (buf[p + 1] << 8) | (buf[p + 2] << 16) | (buf[p + 3] << 24)) | 0; }
-function asciiSlice(buf: Uint8Array, start: number, length: number): string {
-    let s = '';
-    for (let i = 0; i < length; i++)
-        s += String.fromCharCode(buf[start + i]);
-    return s;
-}
-function utf16leSlice(buf: Uint8Array, start: number, charCount: number): string {
-    let s = '';
-    for (let i = 0; i < charCount; i++) {
-        s += String.fromCharCode(buf[start + i * 2] | (buf[start + i * 2 + 1] << 8));
-    }
-    return s;
-}
 function indexOfBytes(buf: Uint8Array, needle: string, start: number): number {
     outer: for (let i = start; i <= buf.length - needle.length; i++) {
         for (let j = 0; j < needle.length; j++) {
@@ -194,24 +157,6 @@ function indexOfBytes(buf: Uint8Array, needle: string, start: number): number {
     }
     return -1;
 }
-function readChunkHeader(buf: Uint8Array, offset: number): ChunkHeader | null {
-    if (offset < 0 || offset + 20 > buf.length)
-        return null;
-    const type = asciiSlice(buf, offset, 4);
-    const id = asciiSlice(buf, offset + 4, 4);
-    if (type !== 'FOLD' && type !== 'DATA')
-        return null;
-    const version = readU32LE(buf, offset + 8);
-    const length = readU32LE(buf, offset + 12);
-    const nameLen = readU32LE(buf, offset + 16);
-    if (length < 0 || nameLen < 0 || nameLen > MAX_STRING_LENGTH)
-        return null;
-    const dataOffset = offset + 20 + nameLen;
-    const endOffset = dataOffset + length;
-    if (endOffset > buf.length)
-        return null;
-    return { type, id, version, length, dataOffset, endOffset };
-}
 function findGameSetupPayload(buf: Uint8Array): GameSetupPayload | null {
     if (buf.length < SECOND_CHUNKY_OFFSET + 24)
         return null;
@@ -220,10 +165,10 @@ function findGameSetupPayload(buf: Uint8Array): GameSetupPayload | null {
     const infoOff = indexOfBytes(buf, 'FOLDINFO', FILE_HEADER_SIZE);
     if (infoOff < 0)
         return null;
-    const info = readChunkHeader(buf, infoOff);
+    const info = readChunkHeader(buf, infoOff, MAX_STRING_LENGTH);
     if (!info || info.type !== 'FOLD' || info.id !== 'INFO')
         return null;
-    const child = readChunkHeader(buf, info.dataOffset);
+    const child = readChunkHeader(buf, info.dataOffset, MAX_STRING_LENGTH);
     if (!child || child.type !== 'DATA' || child.id !== 'DATA' || child.endOffset > info.endOffset)
         return null;
     return { payloadStart: child.dataOffset, payloadEnd: child.endOffset, chunkVersion: child.version };

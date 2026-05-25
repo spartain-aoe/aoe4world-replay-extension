@@ -4,8 +4,8 @@ const UNIT_IMAGE_BASE = 'https://data.aoe4world.com/images/units/';
 
 // Replay summaries can contain fresh or civ-specific unit PBGIDs before they
 // land in aoe4world/data. Generated data wins; this layer fills the gaps.
-// Generated via tmp-scripts/gen-overrides-v3.mjs from ~300 recent aoe4world
-// summaries; rerun and append when new uncovered PBGIDs are spotted.
+// Curated from observed aoe4world summaries/replays; append the smallest
+// missing-PBGID mappings needed when new uncovered units are spotted.
 function unit(name: string, key: string, slug: string): PbgidEntry {
   return { n: name, k: key, i: `${UNIT_IMAGE_BASE}${slug}.png` };
 }

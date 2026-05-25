@@ -1,5 +1,6 @@
 import { extractPlayerColors, extractPlayerColorsStructural, mergePlayerColorStringsByPlayerId, setDebug as setParserDebug, type ExtractPlayerColorsResult, type PlayerColorInfo } from './replay-parser.ts';
 import { extractStatsPlayerMetrics, type StatsPlayerMetric } from './stats-parser.ts';
+import type { GetStatsMetricsResponse } from '../shared/stats-metrics.ts';
 interface Settings {
     parseGameData: boolean;
     recolorSwatches: boolean;
@@ -64,6 +65,24 @@ interface StatsMetricsCacheEntry {
     error?: string;
     softFailure?: boolean;
 }
+interface PlayerListCacheEntry<TPlayer> {
+    players?: TPlayer[];
+    savedAt?: number;
+    failedAt?: number;
+    error?: string;
+    softFailure?: boolean;
+}
+type PlayerListCacheResponse<TPlayer> = {
+    success: true;
+    players: TPlayer[];
+    cached: boolean;
+} | {
+    success: false;
+    error: string;
+    cached?: boolean;
+    rateLimited?: boolean;
+    disabled?: boolean;
+};
 interface CheckReplaysMessage {
     type: 'checkReplays';
     gameIds: Array<string | number>;
@@ -132,17 +151,6 @@ type GetUnitDataResponse = {
 } | {
     success: false;
     error: string;
-    disabled?: boolean;
-};
-type GetStatsMetricsResponse = {
-    success: true;
-    players: StatsPlayerMetric[];
-    cached: boolean;
-} | {
-    success: false;
-    error: string;
-    cached?: boolean;
-    rateLimited?: boolean;
     disabled?: boolean;
 };
 interface PlayerStringDiff {
@@ -580,9 +588,18 @@ async function handleGetUnitData(civSlugs: readonly unknown[]): Promise<GetUnitD
 export interface GetPlayerColorsOptions {
     profileId?: string | number | null;
 }
-export async function handleGetStatsMetrics(matchId: string): Promise<GetStatsMetricsResponse> {
-    const cacheKey = STATS_METRICS_CACHE_KEY_PREFIX + matchId;
-    const cached = await chrome.storage.local.get(cacheKey) as Record<string, StatsMetricsCacheEntry | undefined>;
+async function handleCachedPlayerList<TPlayer>(
+    matchId: string,
+    options: {
+        cachePrefix: string;
+        inFlight: Map<string, Promise<unknown>>;
+        fetchPlayers: () => Promise<TPlayer[]>;
+        storeEntry: (cacheKey: string, value: PlayerListCacheEntry<TPlayer>) => Promise<void>;
+        isPermanentFailure: (message: string | null | undefined) => boolean;
+    }
+): Promise<PlayerListCacheResponse<TPlayer>> {
+    const cacheKey = options.cachePrefix + matchId;
+    const cached = await chrome.storage.local.get(cacheKey) as Record<string, PlayerListCacheEntry<TPlayer> | undefined>;
     const entry = cached[cacheKey];
     if (Array.isArray(entry?.players)) {
         return { success: true, players: entry.players, cached: true };
@@ -593,96 +610,63 @@ export async function handleGetStatsMetrics(matchId: string): Promise<GetStatsMe
             return { success: false, error: entry.error || 'cached_failure', cached: true };
         }
     }
-    if (inFlightStatsRequests.has(matchId)) {
-        return inFlightStatsRequests.get(matchId)!;
+    if (options.inFlight.has(matchId)) {
+        return options.inFlight.get(matchId)! as Promise<PlayerListCacheResponse<TPlayer>>;
     }
-    const inflight = (async (): Promise<GetStatsMetricsResponse> => {
+    const inflight: Promise<PlayerListCacheResponse<TPlayer>> = (async () => {
         try {
             if (Date.now() < backoffUntil) {
-                return { success: false, error: 'rate_limited', rateLimited: true };
+                return { success: false as const, error: 'rate_limited', rateLimited: true };
             }
-            const players = await fetchAndParseStatsMetrics(matchId);
-            await storeStatsMetricsEntry(cacheKey, { players, savedAt: Date.now() });
-            return { success: true, players, cached: false };
-        }
-        catch (err) {
-            const message = (err as { message?: string })?.message || String(err);
-            if (message === 'rate_limited') {
-                return { success: false, error: 'rate_limited', rateLimited: true };
-            }
-            if (isPermanentStatsFailure(message)) {
-                await storeStatsMetricsEntry(cacheKey, { failedAt: Date.now(), error: message });
-            }
-            else if (isSoftFailure(message)) {
-                await storeStatsMetricsEntry(cacheKey, {
-                    failedAt: Date.now(),
-                    error: message,
-                    softFailure: true,
-                });
-            }
-            return { success: false, error: message };
-        }
-    })();
-    inFlightStatsRequests.set(matchId, inflight);
-    try {
-        return await inflight;
-    }
-    finally {
-        inFlightStatsRequests.delete(matchId);
-    }
-}
-export async function handleGetPlayerColors(matchId: string, options: GetPlayerColorsOptions = {}): Promise<GetPlayerColorsResponse> {
-    const cacheKey = COLORS_CACHE_KEY_PREFIX + matchId;
-    const cached = await chrome.storage.local.get(cacheKey) as Record<string, ColorCacheEntry | undefined>;
-    const entry = cached[cacheKey];
-    if (entry?.players) {
-        return { success: true, players: entry.players, cached: true };
-    }
-    if (entry?.failedAt) {
-        const ttl = entry.softFailure ? COLORS_SOFT_FAILURE_TTL_MS : COLORS_NEGATIVE_TTL_MS;
-        if (Date.now() - entry.failedAt < ttl) {
-            return { success: false, error: entry.error || 'cached_failure', cached: true };
-        }
-    }
-    if (inFlightColorRequests.has(matchId)) {
-        return inFlightColorRequests.get(matchId)!;
-    }
-    const inflight: Promise<GetPlayerColorsResponse> = (async () => {
-        try {
-            if (Date.now() < backoffUntil) {
-                return { success: false, error: 'rate_limited', rateLimited: true };
-            }
-            const players = await fetchAndParsePlayerColors(matchId);
-            await storeColorEntry(cacheKey, { players, savedAt: Date.now() });
-            return { success: true, players, cached: false };
+            const players = await options.fetchPlayers();
+            await options.storeEntry(cacheKey, { players, savedAt: Date.now() });
+            return { success: true as const, players, cached: false };
         }
         catch (err) {
             const message = (err as {
                 message?: string;
             })?.message || String(err);
             if (message === 'rate_limited') {
-                return { success: false, error: 'rate_limited', rateLimited: true };
+                return { success: false as const, error: 'rate_limited', rateLimited: true };
             }
-            if (isPermanentFailure(message)) {
-                await storeColorEntry(cacheKey, { failedAt: Date.now(), error: message });
+            if (options.isPermanentFailure(message)) {
+                await options.storeEntry(cacheKey, { failedAt: Date.now(), error: message });
             }
             else if (isSoftFailure(message)) {
-                await storeColorEntry(cacheKey, {
+                await options.storeEntry(cacheKey, {
                     failedAt: Date.now(),
                     error: message,
                     softFailure: true,
                 });
             }
-            return { success: false, error: message };
+            return { success: false as const, error: message };
         }
     })();
-    inFlightColorRequests.set(matchId, inflight);
+    options.inFlight.set(matchId, inflight);
     try {
         return await inflight;
     }
     finally {
-        inFlightColorRequests.delete(matchId);
+        options.inFlight.delete(matchId);
     }
+}
+export async function handleGetStatsMetrics(matchId: string): Promise<GetStatsMetricsResponse> {
+    return handleCachedPlayerList<StatsPlayerMetric>(matchId, {
+        cachePrefix: STATS_METRICS_CACHE_KEY_PREFIX,
+        inFlight: inFlightStatsRequests as Map<string, Promise<unknown>>,
+        fetchPlayers: () => fetchAndParseStatsMetrics(matchId),
+        storeEntry: storeStatsMetricsEntry,
+        isPermanentFailure: isPermanentStatsFailure,
+    });
+}
+export async function handleGetPlayerColors(matchId: string, options: GetPlayerColorsOptions = {}): Promise<GetPlayerColorsResponse> {
+    return handleCachedPlayerList<PlayerColorInfo>(matchId, {
+        cachePrefix: COLORS_CACHE_KEY_PREFIX,
+        inFlight: inFlightColorRequests as Map<string, Promise<unknown>>,
+        fetchPlayers: () => fetchAndParsePlayerColors(matchId),
+        storeEntry: storeColorEntry,
+        isPermanentFailure,
+    });
 }
 export function isPermanentFailure(message: string | null | undefined): boolean {
     if (!message)
@@ -916,49 +900,29 @@ function playersStringDiff(heuristic: PlayerColorInfo[], structural: PlayerColor
 }
 async function storeColorEntry(cacheKey: string, value: ColorCacheEntry): Promise<void> {
     await chrome.storage.local.set({ [cacheKey]: value });
-    await pruneColorCache();
+    await prunePrefixedCache(COLORS_CACHE_KEY_PREFIX, COLORS_CACHE_LIMIT);
 }
 async function storeStatsMetricsEntry(cacheKey: string, value: StatsMetricsCacheEntry): Promise<void> {
     await chrome.storage.local.set({ [cacheKey]: value });
-    await pruneStatsMetricsCache();
+    await prunePrefixedCache(STATS_METRICS_CACHE_KEY_PREFIX, STATS_METRICS_CACHE_LIMIT);
 }
-async function pruneColorCache(): Promise<void> {
+async function prunePrefixedCache(prefix: string, limit: number): Promise<void> {
     const all = await chrome.storage.local.get(null) as StorageItems;
     const entries: Array<{
         key: string;
         ts: number;
     }> = [];
     for (const [key, value] of Object.entries(all)) {
-        if (!key.startsWith(COLORS_CACHE_KEY_PREFIX))
+        if (!key.startsWith(prefix))
             continue;
-        const cacheValue = value as ColorCacheEntry;
+        const cacheValue = value as PlayerListCacheEntry<unknown>;
         const ts = cacheValue.savedAt ?? cacheValue.failedAt ?? 0;
         entries.push({ key, ts });
     }
-    if (entries.length <= COLORS_CACHE_LIMIT)
+    if (entries.length <= limit)
         return;
     entries.sort((a, b) => a.ts - b.ts);
-    const toRemove = entries.slice(0, entries.length - COLORS_CACHE_LIMIT).map(e => e.key);
-    if (toRemove.length)
-        await chrome.storage.local.remove(toRemove);
-}
-async function pruneStatsMetricsCache(): Promise<void> {
-    const all = await chrome.storage.local.get(null) as StorageItems;
-    const entries: Array<{
-        key: string;
-        ts: number;
-    }> = [];
-    for (const [key, value] of Object.entries(all)) {
-        if (!key.startsWith(STATS_METRICS_CACHE_KEY_PREFIX))
-            continue;
-        const cacheValue = value as StatsMetricsCacheEntry;
-        const ts = cacheValue.savedAt ?? cacheValue.failedAt ?? 0;
-        entries.push({ key, ts });
-    }
-    if (entries.length <= STATS_METRICS_CACHE_LIMIT)
-        return;
-    entries.sort((a, b) => a.ts - b.ts);
-    const toRemove = entries.slice(0, entries.length - STATS_METRICS_CACHE_LIMIT).map(e => e.key);
+    const toRemove = entries.slice(0, entries.length - limit).map(e => e.key);
     if (toRemove.length)
         await chrome.storage.local.remove(toRemove);
 }

@@ -7,7 +7,7 @@ import zlib from 'node:zlib';
 import { parseStatsPlayerMetricsFromBytes } from '../../src/background/stats-parser.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const fixturePath = path.resolve(__dirname, '..', 'fixtures', 'replay', '234538529.stats.gz');
+const fixturePath = path.resolve(__dirname, '..', 'fixtures', 'stats', '234538529.stats.gz');
 
 test('parseStatsPlayerMetricsFromBytes extracts Town Center idle time from STPD v2034', () => {
   const bytes = zlib.gunzipSync(fs.readFileSync(fixturePath));
