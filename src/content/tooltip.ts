@@ -1,4 +1,4 @@
-import { drawTimelineCanvasChart } from './canvas-render.ts';
+import { drawTimelineCanvasChart, drawTimelineCanvasChartForHover } from './canvas-render.ts';
 import {
   getCollapsedPlayers,
   playerCacheKey,
@@ -34,6 +34,11 @@ const drawChart = drawTimelineCanvasChart as unknown as (
   chart: Chart,
   hoverIndex?: number | null,
 ) => void;
+const drawHoverChart = drawTimelineCanvasChartForHover as unknown as (
+  canvas: TooltipCanvas,
+  chart: Chart,
+  hoverIndex?: number | null,
+) => void;
 
 function isStackedYCache(value: Float32Array | StackedYCache | undefined): value is StackedYCache {
   return Boolean(value) && !(value instanceof Float32Array);
@@ -59,7 +64,7 @@ export function attachCanvasTooltip(canvas: TooltipCanvas, chart: Chart, timelin
     const index = Math.max(0, Math.min(chart.data.labels.length - 1, Math.round(raw)));
 
     const closestKey = computeClosestSeriesKey(canvas, chart, index, event);
-    drawChart(canvas, chart, index);
+    drawHoverChart(canvas, chart, index);
 
     if (useFloatingTooltip && tooltip) {
       updateCanvasTooltip(tooltip, canvas, chart, index, event, closestKey);

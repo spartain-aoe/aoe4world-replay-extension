@@ -1,7 +1,7 @@
 import { normalizeName } from './dom.ts';
 import { niceGeometryForChart } from './canvas-geom.ts';
 import { precomputeStackedValues } from './army-series.ts';
-import { drawTimelineCanvasChart } from './canvas-render.ts';
+import { drawTimelineCanvasChart, drawTimelineCanvasChartForHover } from './canvas-render.ts';
 import { nativePlayerRowText } from './native-timeline.ts';
 import { playerCacheKey } from './canvas-cache.ts';
 import type {
@@ -144,13 +144,13 @@ export function attachPlayerToggle(timeline: TimelineElements, chart: Chart): vo
       const onEnter = (event: MouseEvent): void => {
         if (shouldSuppressHover(timeline, event)) return;
         chart.highlightKey = highlightKeyForPlayer;
-        drawTimelineCanvasChart(timeline.canvas, chart);
+        drawTimelineCanvasChartForHover(timeline.canvas, chart);
       };
       const onLeave = (event: MouseEvent): void => {
         if (shouldSuppressHover(timeline, event)) return;
         if (chart.highlightKey === highlightKeyForPlayer) {
           chart.highlightKey = null;
-          drawTimelineCanvasChart(timeline.canvas, chart);
+          drawTimelineCanvasChartForHover(timeline.canvas, chart);
         }
       };
       row.addEventListener('mouseenter', onEnter);
