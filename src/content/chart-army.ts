@@ -11,6 +11,7 @@ import {
   numericArray,
   buildSampleLabels,
   SUMMARY_PLUS_PREFIX,
+  maxAbs,
 } from './chart-utils.ts';
 import {
   buildArmySeriesForPlayer,
@@ -18,7 +19,6 @@ import {
   precomputeStackedValues,
 } from './army-series.ts';
 import {
-  resourceSampleLabels,
   lastResourceTimestamp,
 } from './chart-resources.ts';
 import type { Chart, ChartSeries, GameSummary, PlayerSummary } from './types.ts';
@@ -29,14 +29,7 @@ const getArmyTeamSigns = armyTeamSigns as (players: PlayerSummary[], nativePlaye
 const TEAM_POSITIVE_COLOR = AOE4_PLAYER_COLOR_HEX[0];
 const TEAM_NEGATIVE_COLOR = AOE4_PLAYER_COLOR_HEX[1];
 
-export function buildArmyCharts(summary: GameSummary, nativeColors: NativeColors, nativePlayerOrder: string[] = []): Chart[] {
-  const players: PlayerSummary[] = Array.isArray(summary.players) ? summary.players : [];
-  // Avoid flatlining past recorded samples.
-  const lastResourceTime = lastResourceTimestamp(players);
-  const gameDuration = lastResourceTime || summary.duration || 0;
-  const labels = buildSampleLabels(gameDuration, 10);
-  const teamSigns = getArmyTeamSigns(players, nativePlayerOrder);
-
+function orderedArmyPlayers(players: PlayerSummary[], nativePlayerOrder: string[]): PlayerSummary[] {
   const orderedPlayers: PlayerSummary[] = [];
   const used = new Set<PlayerSummary>();
   for (const name of nativePlayerOrder) {
@@ -49,8 +42,18 @@ export function buildArmyCharts(summary: GameSummary, nativeColors: NativeColors
   for (const player of players) {
     if (!used.has(player)) orderedPlayers.push(player);
   }
+  return orderedPlayers;
+}
 
-  const series: ChartSeries[] = orderedPlayers.flatMap((player: PlayerSummary) => {
+function buildSignedArmySeries(
+  summary: GameSummary,
+  players: PlayerSummary[],
+  labels: number[],
+  nativeColors: NativeColors,
+  nativePlayerOrder: string[],
+  teamSigns: Map<number, number>,
+): ChartSeries[] {
+  return orderedArmyPlayers(players, nativePlayerOrder).flatMap((player: PlayerSummary) => {
     const originalIndex = players.indexOf(player);
     const playerName = player.name || `Player ${originalIndex + 1}`;
     const baseColor = playerColor(summary, player, originalIndex, nativeColors);
@@ -73,6 +76,16 @@ export function buildArmyCharts(summary: GameSummary, nativeColors: NativeColors
         };
       });
   });
+}
+
+export function buildArmyCharts(summary: GameSummary, nativeColors: NativeColors, nativePlayerOrder: string[] = []): Chart[] {
+  const players: PlayerSummary[] = Array.isArray(summary.players) ? summary.players : [];
+  // Avoid flatlining past recorded samples.
+  const lastResourceTime = lastResourceTimestamp(players);
+  const gameDuration = lastResourceTime || summary.duration || 0;
+  const labels = buildSampleLabels(gameDuration, 10);
+  const teamSigns = getArmyTeamSigns(players, nativePlayerOrder);
+  const series = buildSignedArmySeries(summary, players, labels, nativeColors, nativePlayerOrder, teamSigns);
   if (!labels.length || !series.length) return [];
   precomputeStackedValues(series);
   return [{
@@ -87,7 +100,9 @@ export function buildArmyCharts(summary: GameSummary, nativeColors: NativeColors
 
 export function buildArmyValueLeadCharts(summary: GameSummary, nativeColors: NativeColors, nativePlayerOrder: string[] = []): Chart[] {
   const players: PlayerSummary[] = Array.isArray(summary.players) ? summary.players : [];
-  const labels = resourceSampleLabels(players, summary.duration || 0);
+  const lastResourceTime = lastResourceTimestamp(players);
+  const gameDuration = lastResourceTime || summary.duration || 0;
+  const labels = buildSampleLabels(gameDuration, 10);
   if (!labels.length) return [];
 
   const teamSigns = getArmyTeamSigns(players, nativePlayerOrder);
@@ -101,11 +116,18 @@ export function buildArmyValueLeadCharts(summary: GameSummary, nativeColors: Nat
   const is1v1 = players.length === 2;
   const posPlayers = players.filter((player: PlayerSummary) => player.team === positiveTeam);
   const negPlayers = players.filter((player: PlayerSummary) => player.team === negativeTeam);
-  const posMilitary: number[][] = posPlayers.map((player: PlayerSummary) => numericArray(player.resources?.military) as number[]);
-  const negMilitary: number[][] = negPlayers.map((player: PlayerSummary) => numericArray(player.resources?.military) as number[]);
 
-  const posValues: number[] = labels.map((_, i) => posMilitary.reduce((s: number, v: number[]) => s + (v[i] || 0), 0));
-  const negValues: number[] = labels.map((_, i) => negMilitary.reduce((s: number, v: number[]) => s + (v[i] || 0), 0));
+  const posValues = labels.map(() => 0);
+  const negValues = labels.map(() => 0);
+  const armySeries = buildSignedArmySeries(summary, players, labels, nativeColors, nativePlayerOrder, teamSigns);
+  for (const item of armySeries) {
+    const totals = (item.sign ?? 1) >= 0 ? posValues : negValues;
+    const values = item._valueValues || [];
+    for (let i = 0; i < labels.length; i++) {
+      totals[i] += Math.abs(values[i] || 0);
+    }
+  }
+  if (maxAbs(posValues) === 0 && maxAbs(negValues) === 0) return [];
   const diffValues: number[] = labels.map((_, i) => posValues[i] - negValues[i]);
 
   const posColor = is1v1 ? playerColor(summary, posPlayers[0], players.indexOf(posPlayers[0]), nativeColors) : TEAM_POSITIVE_COLOR;
@@ -129,6 +151,7 @@ export function buildArmyValueLeadCharts(summary: GameSummary, nativeColors: Nat
   return [{
     value: `${SUMMARY_PLUS_PREFIX}army-value-lead`,
     title: 'Army Value Lead',
+    meta: 'Net lead in active army resource value using the same AoE4 World unit build-order finished/destroyed timestamps as Army Composition.',
     data: { labels, series: [leadPosSeries, leadNegSeries] },
     type: 'lead',
     options: { height: 280 }
