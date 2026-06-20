@@ -6,6 +6,9 @@ AoE4 Replay Launcher does not collect, store, or transmit any personal data.
 
 - Checks replay availability by sending game IDs to `aoe-api.worldsedgelink.com`
 - Checks current game patch version via `aoe4world.com/api`
+- For the chart and in-game-color features (on by default, toggleable in settings):
+  fetches the game summary from `aoe4world.com` and the replay/stats file from
+  `rl0aoelivemk2blob.blob.core.windows.net` to render charts and player colors
 - Caches availability results locally in your browser (game ID, patch number, true/false, 24h expiry)
 - Saves favorited replays locally in your browser (gzipped replay data, max 10)
 - Sends replay data to a locally-installed native host to decompress and launch

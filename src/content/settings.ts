@@ -3,9 +3,9 @@ import type { Settings } from './types.ts';
 type SettingsChangeSubscriber = (prev: Settings, next: Settings) => void;
 
 export const SETTINGS_DEFAULTS: Readonly<Settings> = Object.freeze({
-  parseGameData: false,
-  recolorSwatches: false,
-  injectCharts: false,
+  parseGameData: true,
+  recolorSwatches: true,
+  injectCharts: true,
   debugLogs: false,
 });
 

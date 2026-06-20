@@ -45,7 +45,7 @@ const list = document.getElementById('list') as HTMLElement;
 const countEl = document.getElementById('count') as HTMLElement;
 let currentFavorites: FavoritesById = {};
 
-const SETTINGS_DEFAULTS = Object.freeze<PopupSettings>({ parseGameData: false, recolorSwatches: false, injectCharts: false, debugLogs: false });
+const SETTINGS_DEFAULTS = Object.freeze<PopupSettings>({ parseGameData: true, recolorSwatches: true, injectCharts: true, debugLogs: false });
 const settingsPanel = document.getElementById('settings') as HTMLElement;
 const settingsToggle = document.getElementById('settings-toggle') as HTMLElement;
 const optParse = document.getElementById('opt-parse') as HTMLInputElement;

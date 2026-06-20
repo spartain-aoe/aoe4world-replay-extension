@@ -159,7 +159,7 @@ interface PlayerStringDiff {
     heuristic: string | null;
     structural: string | null;
 }
-const SETTINGS_DEFAULTS: Readonly<Settings> = Object.freeze({ parseGameData: false, recolorSwatches: false, injectCharts: false, debugLogs: false });
+const SETTINGS_DEFAULTS: Readonly<Settings> = Object.freeze({ parseGameData: true, recolorSwatches: true, injectCharts: true, debugLogs: false });
 let SETTINGS: Settings = { ...SETTINGS_DEFAULTS };
 let __settingsReadyResolve: (() => void) | undefined;
 const settingsReady: Promise<void> = new Promise<void>(r => { __settingsReadyResolve = r; });

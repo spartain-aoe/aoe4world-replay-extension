@@ -24,12 +24,12 @@ describe('settings – defaults (empty storage)', () => {
     assert.ok(mod.settingsReady instanceof Promise);
   });
 
-  it('recolorEnabled defaults to false', () => {
-    assert.equal(mod.recolorEnabled(), false);
+  it('recolorEnabled defaults to true', () => {
+    assert.equal(mod.recolorEnabled(), true);
   });
 
-  it('chartsEnabled defaults to false', () => {
-    assert.equal(mod.chartsEnabled(), false);
+  it('chartsEnabled defaults to true', () => {
+    assert.equal(mod.chartsEnabled(), true);
   });
 
   it('SETTINGS_DEFAULTS is frozen', () => {
@@ -64,22 +64,22 @@ describe('applySettings', () => {
   it('merges with defaults', () => {
     mod.applySettings({ parseGameData: true, recolorSwatches: true });
     assert.equal(mod.recolorEnabled(), true);
-    assert.equal(mod.chartsEnabled(), false); // default preserved
+    assert.equal(mod.chartsEnabled(), true); // injectCharts default (true) preserved
   });
 
   it('handles null/undefined stored value', () => {
     mod.applySettings(null);
-    assert.equal(mod.recolorEnabled(), false);
-    assert.equal(mod.chartsEnabled(), false);
+    assert.equal(mod.recolorEnabled(), true);
+    assert.equal(mod.chartsEnabled(), true);
   });
 
   it('notifies subscribers with prev and next', () => {
     const calls = [];
     mod.onSettingsChange((prev, next) => calls.push({ prev, next }));
-    mod.applySettings({ recolorSwatches: true });
+    mod.applySettings({ debugLogs: true });
     assert.equal(calls.length, 1);
-    assert.equal(calls[0].prev.recolorSwatches, false);
-    assert.equal(calls[0].next.recolorSwatches, true);
+    assert.equal(calls[0].prev.debugLogs, false);
+    assert.equal(calls[0].next.debugLogs, true);
   });
 
   it('catches subscriber errors without throwing', () => {
@@ -223,8 +223,9 @@ describe('debugLogsEnabled gate', () => {
 describe('settings – recolor regression: explicit undefined defaults to disabled', () => {
   it('recolorEnabled returns false when stored recolorSwatches is undefined', async () => {
     const { mod } = await loadSettings({ initial: { settings: { recolorSwatches: undefined } } });
-    // Per default policy, recolor is opt-in. Spreading undefined onto the
-    // default object overwrites it; recolorEnabled must still return false.
+    // Spreading an explicit `undefined` overwrites the default, so recolorSwatches
+    // becomes undefined; recolorEnabled requires === true, so it stays false even
+    // though recolor is otherwise enabled by default.
     assert.equal(mod.recolorEnabled(), false);
   });
 
