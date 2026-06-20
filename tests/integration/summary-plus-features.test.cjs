@@ -592,6 +592,7 @@ async function installNumudanRoutesWithDelayedPbgidMap(delayMs = 2500) {
         selectValue: select?.value || '',
         heading: [...document.querySelectorAll('h3')].map(h => (h.textContent || '').trim()).find(text => text.includes('Army Composition')) || '',
         labels: [...(og?.querySelectorAll('option') || [])].map(opt => (opt.textContent || '').trim()),
+        nativeArmyOptionText: [...(select?.querySelectorAll('option') || [])].find(opt => opt.value === 'army')?.textContent?.trim() || '',
       };
     });
     const expectedStart = [
@@ -610,6 +611,14 @@ async function installNumudanRoutesWithDelayedPbgidMap(delayMs = 2500) {
     assert(
       expectedStart.every((label, index) => state.labels[index] === label),
       `unexpected Summary+ order:\nexpected ${JSON.stringify(expectedStart)}\nactual   ${JSON.stringify(state.labels.slice(0, expectedStart.length))}`,
+    );
+    // Regression: the native AoE4 World "Army" option (value="army") must keep
+    // its own label and not be overwritten with the active injected chart
+    // title, which previously produced a duplicate "Army Composition" entry in
+    // the dropdown on a plain page load.
+    assert(
+      state.nativeArmyOptionText === 'Army',
+      `native "Army" option was relabeled in the dropdown (expected "Army", got ${JSON.stringify(state.nativeArmyOptionText)})`,
     );
   });
 
