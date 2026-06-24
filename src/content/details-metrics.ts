@@ -17,6 +17,19 @@ const IDLE_TC_TITLE = 'Idle TC time from the official stats telemetry file. Incl
 let detailsInstallToken = 0;
 let detailsTimers: ReturnType<typeof setTimeout>[] = [];
 
+// Reactive re-install of the details metrics. The fixed retry timers below only
+// cover the first few seconds after the summary loads; on a slow (cold-cache)
+// load the comparison table — or an SPA re-render of it — can appear after that
+// window, leaving the placeholder "—" stuck until a manual refresh. This
+// observer re-applies the latest loaded telemetry whenever the DOM changes, so
+// late or re-rendered tables still receive their Idle TC values.
+const DETAILS_OBSERVER_LIFETIME_MS = 15000;
+const DETAILS_OBSERVER_DEBOUNCE_MS = 150;
+
+let detailsObserver: MutationObserver | null = null;
+let detailsObserverDebounce: ReturnType<typeof setTimeout> | null = null;
+let detailsObserverLifetime: ReturnType<typeof setTimeout> | null = null;
+
 function scheduleDetailsTimer(callback: () => void, delay: number): void {
   detailsTimers.push(setTimeout(() => {
     detailsTimers = detailsTimers.filter(timer => timer !== handle);
@@ -28,6 +41,42 @@ function scheduleDetailsTimer(callback: () => void, delay: number): void {
 function clearDetailsTimers(): void {
   for (const timer of detailsTimers) clearTimeout(timer);
   detailsTimers = [];
+}
+
+function disconnectDetailsObserver(): void {
+  if (detailsObserver) {
+    detailsObserver.disconnect();
+    detailsObserver = null;
+  }
+  if (detailsObserverDebounce) {
+    clearTimeout(detailsObserverDebounce);
+    detailsObserverDebounce = null;
+  }
+  if (detailsObserverLifetime) {
+    clearTimeout(detailsObserverLifetime);
+    detailsObserverLifetime = null;
+  }
+}
+
+function observeDetailsTable(token: number, gameId: string | undefined, install: () => void): void {
+  disconnectDetailsObserver();
+  if (typeof MutationObserver === 'undefined' || typeof document === 'undefined' || !document.body) return;
+  const stillCurrent = (): boolean =>
+    token === detailsInstallToken && (!gameId || getGameIdFromUrl(window.location.href) === gameId);
+  const observer = new MutationObserver(() => {
+    if (!stillCurrent()) {
+      disconnectDetailsObserver();
+      return;
+    }
+    if (detailsObserverDebounce) return;
+    detailsObserverDebounce = setTimeout(() => {
+      detailsObserverDebounce = null;
+      if (stillCurrent()) install();
+    }, DETAILS_OBSERVER_DEBOUNCE_MS);
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+  detailsObserver = observer;
+  detailsObserverLifetime = setTimeout(disconnectDetailsObserver, DETAILS_OBSERVER_LIFETIME_MS);
 }
 
 function finiteNumber(value: unknown): number | null {
@@ -212,12 +261,19 @@ function installMetricCells(row: HTMLTableRowElement, apmIndex: number): void {
 
 export function installDetailsTableMetrics(summary: GameSummary, statsMetrics?: readonly StatsPlayerMetric[]): boolean {
   const table = findDetailsComparisonTable();
-  if (!table || tableBodyRows(table).length === 0) return false;
+  if (!table) return false;
+  const bodyRows = tableBodyRows(table);
+  if (bodyRows.length === 0) return false;
   const metrics = calculateDetailsPlayerMetrics(summary, statsMetrics);
   const fingerprint = JSON.stringify(metrics.map(item => [item.profileId, item.name, item.idleTcSeconds]));
+  // Require every body row to actually carry the metric cell, not just the
+  // table to have a matching element somewhere: an SPA re-render can wipe the
+  // body cells while leaving the injected header (and the table's fingerprint
+  // attribute) intact, and we must re-install in that case.
+  const allRowsHaveMetricCell = bodyRows.every(row => row.querySelector(`td[${DETAILS_METRIC_ATTR}="${IDLE_TC_METRIC}"]`));
   if (
     table.getAttribute(DETAILS_FINGERPRINT_ATTR) === fingerprint &&
-    table.querySelector(`[${DETAILS_METRIC_ATTR}="${IDLE_TC_METRIC}"]`)
+    allRowsHaveMetricCell
   ) {
     return true;
   }
@@ -227,7 +283,7 @@ export function installDetailsTableMetrics(summary: GameSummary, statsMetrics?: 
   const byProfileId = new Map(metrics.filter(item => item.profileId).map(item => [item.profileId, item]));
   const byName = new Map(metrics.map(item => [normalizeName(item.name), item]));
 
-  for (const row of tableBodyRows(table)) {
+  for (const row of bodyRows) {
     installMetricCells(row, apmIndex);
     const rowMetrics = byProfileId.get(playerProfileIdFromRow(row)) || byName.get(normalizeName(playerNameFromRow(row)));
     if (!rowMetrics) continue;
@@ -241,6 +297,7 @@ export function installDetailsTableMetrics(summary: GameSummary, statsMetrics?: 
 export function clearDetailsTableMetrics(): void {
   detailsInstallToken++;
   clearDetailsTimers();
+  disconnectDetailsObserver();
   for (const table of document.querySelectorAll<HTMLTableElement>('table[data-aoe4-details-metrics="true"], table:has([data-aoe4-details-metric])')) {
     table.querySelectorAll<HTMLElement>(`[${DETAILS_METRIC_ATTR}]`).forEach(cell => cell.remove());
     restoreHeaderColSpans(table);
@@ -268,6 +325,7 @@ export function scheduleDetailsTableMetrics(summary: GameSummary, gameId?: strin
     currentStatsMetrics = players;
     installCurrentMetrics();
   });
+  observeDetailsTable(token, gameId, installCurrentMetrics);
 }
 
 function requestStatsMetrics(gameId: string | undefined, token: number, onLoaded: (players: readonly StatsPlayerMetric[]) => void): void {

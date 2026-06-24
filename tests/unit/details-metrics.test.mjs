@@ -144,6 +144,45 @@ test('installDetailsTableMetrics is idempotent for unchanged metrics', () => {
   assert.equal(document.querySelector('td[data-aoe4-details-metric="idle-tc"]').dataset.marker, 'same-cell');
 });
 
+test('installDetailsTableMetrics re-installs body cells after a tbody-only re-render', () => {
+  const { document, window } = parseHTML(`
+    <table>
+      <thead>
+        <tr><th></th><th colspan="1">Score</th><th colspan="1">Resources Spent</th><th colspan="1">Max. Workers</th><th colspan="1">Misc</th><th colspan="1">Sacred Sites</th></tr>
+        <tr><th></th><th>Total</th><th>Food</th><th>Villagers</th><th>APM</th><th>Capt.</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><a href="/players/1">P1</a></td><td>100</td><td>50</td><td>10</td><td>55</td><td>0</td></tr>
+      </tbody>
+    </table>
+  `);
+  globalThis.document = document;
+  globalThis.window = window;
+  const summary = { players: [{ profileId: 1, name: 'P1' }] };
+  const stats = [{ profileId: 1, name: 'P1', townCenterIdleSeconds: 10 }];
+
+  assert.equal(installDetailsTableMetrics(summary, stats), true);
+  assert.ok(document.querySelector('tbody td[data-aoe4-details-metric="idle-tc"]'), 'body cell installed initially');
+
+  // Simulate an SPA re-render that replaces ONLY the <tbody> rows, keeping the
+  // <table> node (with its fingerprint attribute) and the injected <thead>
+  // header cell. The body Idle TC cell is destroyed; the header survives.
+  const tbody = document.querySelector('tbody');
+  tbody.innerHTML = '<tr><td><a href="/players/1">P1</a></td><td>100</td><td>50</td><td>10</td><td>55</td><td>0</td></tr>';
+  assert.equal(
+    document.querySelector('tbody td[data-aoe4-details-metric="idle-tc"]'),
+    null,
+    'body cell wiped by tbody re-render',
+  );
+
+  // Re-install with identical metrics (same fingerprint). It must re-add the
+  // body cell, not short-circuit because the surviving header still matches.
+  assert.equal(installDetailsTableMetrics(summary, stats), true);
+  const cell = document.querySelector('tbody td[data-aoe4-details-metric="idle-tc"]');
+  assert.ok(cell, 'body cell re-installed after tbody-only re-render');
+  assert.equal(cell.textContent.trim(), '0:10');
+});
+
 test('clearDetailsTableMetrics cancels delayed schedule retries', async () => {
   const { document, window } = parseHTML(`
     <table>
@@ -226,3 +265,60 @@ test('scheduleDetailsTableMetrics keeps loaded Idle TC value after later placeho
     ['P1', '100', '50', '10', '55', '0:10', '0'],
   );
 });
+
+test('scheduleDetailsTableMetrics applies Idle TC when the details table renders after the fixed retry window', async () => {
+  // Loading-race repro: the stats telemetry loads quickly, but the details
+  // comparison table only appears (or the SPA re-renders it) after the fixed
+  // [0, 500, 1500, 4000]ms retry timers have all elapsed. Without a reactive
+  // observer the loaded value is never applied and the placeholder "—" sticks
+  // until a manual refresh.
+  const { document, window } = parseHTML('<!doctype html><html><body></body></html>');
+  Object.defineProperty(window, 'location', {
+    value: new URL('https://aoe4world.com/players/1-P1/games/123'),
+    configurable: true,
+  });
+  globalThis.document = document;
+  globalThis.window = window;
+  globalThis.MutationObserver = window.MutationObserver;
+  globalThis.chrome = {
+    runtime: {
+      sendMessage: (message, callback) => {
+        if (message.type === 'getStatsMetrics') {
+          setTimeout(() => callback({
+            success: true,
+            players: [{ profileId: 1, name: 'P1', townCenterIdleSeconds: 10 }],
+          }), 30);
+        }
+      },
+    },
+  };
+
+  scheduleDetailsTableMetrics({
+    players: [{ profileId: 1, name: 'P1' }],
+  }, '123');
+
+  // Render the table only after the last fixed retry (4000ms) has fired.
+  await new Promise(resolve => setTimeout(resolve, 4300));
+  document.body.innerHTML = `
+    <table>
+      <thead>
+        <tr><th></th><th colspan="1">Score</th><th colspan="1">Resources Spent</th><th colspan="1">Max. Workers</th><th colspan="1">Misc</th><th colspan="1">Sacred Sites</th></tr>
+        <tr><th></th><th>Total</th><th>Food</th><th>Villagers</th><th>APM</th><th>Capt.</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><a href="/players/1">P1</a></td><td>100</td><td>50</td><td>10</td><td>55</td><td>0</td></tr>
+      </tbody>
+    </table>
+  `;
+
+  await new Promise(resolve => setTimeout(resolve, 600));
+
+  assert.deepEqual(
+    [...document.querySelectorAll('tbody td')].map(td => td.textContent.trim()),
+    ['P1', '100', '50', '10', '55', '0:10', '0'],
+    'Idle TC value should be applied to the late-rendered details table',
+  );
+  clearDetailsTableMetrics();
+  delete globalThis.MutationObserver;
+});
+

@@ -8,8 +8,8 @@ Watch any AoE4 ranked game replay directly from [aoe4world.com](https://aoe4worl
 
 - **One-click replay launching** from any game on aoe4world.com
 - **Save replays** — star games to keep them locally for offline viewing
-- **Custom charts** — army composition, resource gathered, army value lead charts on game summary pages (opt-in)
-- **In-game player colors** — recolors aoe4world's default swatches with actual replay colors (opt-in)
+- **Custom charts** — army composition, resource gathered, army value lead charts on game summary pages (on by default)
+- **In-game player colors** — recolors aoe4world's default swatches with actual replay colors (on by default)
 - **Patch-aware** — warns when a replay is from a previous patch, shows "Replay Unavailable" for older patches
 - **DLC support** — handles new civs and colors automatically
 - **Works with Chrome and Edge**
@@ -34,7 +34,7 @@ Or load manually:
 3. Run `install.bat`
 4. Files are installed to `%LOCALAPPDATA%\AoE4ReplayLauncher`
 
-### 3. Enable features
+### 3. Feature settings
 
 Click the extension icon to open settings:
 
@@ -42,7 +42,7 @@ Click the extension icon to open settings:
   - **Inject custom charts** — adds army composition and resource charts to game pages
   - **Use in-game player colors** — recolors swatches with actual replay colors
 
-All features are off by default. Replay launching works without enabling any of these.
+Charts and in-game player colors are **on by default**. Open the settings panel to turn any of them off. Replay launching works regardless of these settings.
 
 ## Development
 

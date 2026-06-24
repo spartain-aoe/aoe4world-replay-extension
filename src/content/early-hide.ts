@@ -58,7 +58,9 @@
 
   try {
     chrome.storage.local.get('settings', ({ settings }: EarlyHideSettings): void => {
-      const enabled = settings?.parseGameData === true && settings?.recolorSwatches === true;
+      // Charts/recolor are on by default, so treat absent settings as enabled.
+      // An explicit `false` still disables; only a missing key uses the default.
+      const enabled = (settings?.parseGameData ?? true) === true && (settings?.recolorSwatches ?? true) === true;
       writeHint(enabled);
       if (!enabled && !skipped) removeStyle();
     });

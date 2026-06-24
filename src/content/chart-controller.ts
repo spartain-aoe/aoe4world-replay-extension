@@ -78,13 +78,11 @@ function removeSummaryDefaultGateStyle(): void {
   document.getElementById(SUMMARY_DEFAULT_GATE_STYLE_ID)?.remove();
 }
 
-function maskNativeArmyOption(timeline: TimelineElements, label: string): void {
-  const option = timeline.select.querySelector<HTMLOptionElement>('option[value="army"]');
-  if (!option) return;
-  if (!option.dataset.aoe4NativeText) option.dataset.aoe4NativeText = option.textContent || 'Army';
-  option.textContent = label;
-}
-
+// The native AoE4 World timeline dropdown exposes its own "Army Value" entry
+// (option[value="army"]). It must keep that label while a Summary+ chart is
+// active — earlier builds overwrote it with the active chart title, which made
+// the list show a duplicate "Army Composition" row. This only undoes any such
+// legacy relabel; it never renames the option to our title.
 function restoreNativeArmyOption(timeline: TimelineElements | null | undefined): void {
   const option = timeline?.select?.querySelector<HTMLOptionElement>('option[value="army"]');
   if (!option?.dataset.aoe4NativeText) return;
@@ -620,15 +618,19 @@ function ensureSummaryCanvas(timeline: TimelineElements): TimelineElements['canv
   return newCanvas;
 }
 
-function renderTimelineMetric(timeline: TimelineElements, chart: Chart): void {
-  removeSummaryDefaultGateStyle();
-  hideNativeAgeUpOverlay(timeline);
-  suppressHoverUntilPointerMove(timeline);
-  maskNativeArmyOption(timeline, chart.title);
+export function applyActiveSummaryHeading(timeline: TimelineElements, chart: Chart): void {
+  restoreNativeArmyOption(timeline);
   if (!timeline.heading.dataset.aoe4NativeTitle) {
     timeline.heading.dataset.aoe4NativeTitle = timeline.heading.textContent || '';
   }
   timeline.heading.textContent = chart.title;
+}
+
+function renderTimelineMetric(timeline: TimelineElements, chart: Chart): void {
+  removeSummaryDefaultGateStyle();
+  hideNativeAgeUpOverlay(timeline);
+  suppressHoverUntilPointerMove(timeline);
+  applyActiveSummaryHeading(timeline, chart);
   const canvas = ensureSummaryCanvas(timeline);
   canvas.style.display = '';
   if (chart.type === 'army') {
