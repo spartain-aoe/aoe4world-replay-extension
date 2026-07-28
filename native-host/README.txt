@@ -15,6 +15,18 @@ INSTALL
 
 Files are installed to %LOCALAPPDATA%\AoE4ReplayLauncher.
 
+DEEP LINKS (aoe4rep://)
+----------------------
+Installing also registers an "aoe4rep://" URL protocol so replays can be
+launched from outside the browser. Opening a link of the form:
+
+    aoe4rep://m/243976528
+
+(from a browser, Discord, a shortcut, or `start aoe4rep://m/243976528`)
+downloads that match's replay and launches it in AoE4 - the same flow as
+the "Watch Replay" button. Protocol activity is logged to
+%LOCALAPPDATA%\AoE4ReplayLauncher\protocol.log.
+
 UNINSTALL
 ---------
 Double-click uninstall.bat, then delete this folder.
