@@ -140,6 +140,64 @@ describe('drawTimelineCanvasChart', () => {
     }
   });
 
+  it('renders villager-efficiency bands and dashed ideal lines without drawing metric-only series', () => {
+    const canvas = makeCanvas();
+    const actual = {
+      ...lineSeriesItem('alpha:actual', [6, 7, 7], { playerName: 'Alpha' }),
+      unitLabel: 'Actual',
+    };
+    const ideal = {
+      ...lineSeriesItem('alpha:ideal', [6, 7, 8], { playerName: 'Alpha' }),
+      unitLabel: 'Ideal',
+      lineDash: [6, 4],
+    };
+    const missed = {
+      ...lineSeriesItem('alpha:missed', [0, 0, 1], { playerName: 'Alpha', color: '#F59E0B' }),
+      unitLabel: 'Missed production',
+      render: 'metric',
+    };
+    const killed = {
+      ...lineSeriesItem('alpha:killed', [0, 0, 1], { playerName: 'Alpha', color: '#EF4444' }),
+      unitLabel: 'Killed',
+      render: 'metric',
+    };
+    const chart = makeChart('villager-efficiency', [actual, ideal, missed, killed], {
+      labels: [0, 10, 20],
+      geometry: { yMin: 0, yMax: 10 },
+    });
+    chart.bands = [
+      {
+        key: 'alpha:killed-band',
+        label: 'Killed',
+        playerName: 'Alpha',
+        color: '#EF4444',
+        fromValues: [6, 7, 7],
+        toValues: [6, 7, 8],
+      },
+      {
+        key: 'alpha:missed-band',
+        label: 'Missed production',
+        playerName: 'Alpha',
+        color: '#F59E0B',
+        fromValues: [6, 7, 8],
+        toValues: [6, 7, 9],
+      },
+    ];
+
+    drawTimelineCanvasChart(canvas, chart);
+
+    assert.equal(canvas._ctx._calls.filter(call => call.m === 'fill').length, 2);
+    assert.ok(
+      canvas._ctx._calls.some(call => call.m === 'setLineDash' && call.args[0]?.join(',') === '6,4'),
+      'expected the ideal line to use its dashed stroke pattern',
+    );
+    assert.equal(
+      canvas._ctx._calls.filter(call => call.m === 'setLineDash' && call.args[0]?.length === 0).length,
+      2,
+      'only the two line series should reset their stroke pattern',
+    );
+  });
+
   describe('army chart', () => {
     it('renders stacked area bands for expanded players', () => {
       const canvas = makeCanvas();

@@ -1,12 +1,18 @@
-import { buildVillagerCombatCharts } from './chart-villagers.ts';
+import {
+  applyVillagerEfficiencySoftCap,
+  buildVillagerEfficiencyCharts,
+} from './chart-villagers.ts';
 import {
   clearDetailsTableMetrics,
   scheduleDetailsTableMetrics,
 } from './details-metrics.ts';
+import { ensurePbgidMap } from './pbgid-map.ts';
 
 const combatMetrics = {
-  buildVillagerCombatCharts,
+  applyVillagerEfficiencySoftCap,
+  buildVillagerEfficiencyCharts,
   clearDetailsTableMetrics,
+  ensureData: ensurePbgidMap,
   scheduleDetailsTableMetrics,
 };
 

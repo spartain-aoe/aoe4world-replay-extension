@@ -30,8 +30,10 @@ export interface PlayerResources {
 }
 
 export interface PlayerAnalysisLandmark {
+  pbgid?: number;
   gameTime: number;
   newAge: number;
+  name?: string;
 }
 
 export interface PlayerAnalysis {
@@ -98,6 +100,18 @@ export interface PbgidEntry {
   u?: number;
 }
 
+export interface VillagerUnitMeta {
+  k: string;
+  t: number;
+  p: string[];
+  b?: number;
+}
+
+export interface VillagerProducerMeta {
+  k: string;
+  r?: number;
+}
+
 export interface ChartSeries {
   key?: string;
   label: string;
@@ -125,7 +139,10 @@ export interface ChartSeries {
   _playerBase?: Float32Array | null;
   _playerTop?: Float32Array | null;
   _rawValues?: number[];
+  _uncappedValues?: number[];
   team?: number;
+  render?: 'line' | 'metric';
+  lineDash?: number[];
   _areaIcon?: {
     url: string;
     entry: {
@@ -143,6 +160,16 @@ export interface UnitUpgrade {
 export interface ChartData {
   labels: number[];
   series: ChartSeries[];
+}
+
+export interface ChartBand {
+  key: string;
+  label: string;
+  playerName: string;
+  color: string;
+  fromValues: number[];
+  toValues: number[];
+  opacity?: number;
 }
 
 export interface ChartGeometry {
@@ -165,9 +192,11 @@ export interface Chart {
   options?: {
     height?: number;
     armyMode?: 'count' | 'value';
+    villagerSoftCap?: number;
     [key: string]: unknown;
   };
   data: ChartData;
+  bands?: ChartBand[];
   ageUps?: AgeUp[];
   _geometry?: ChartGeometry;
   _legendNodes?: Map<string, LegendNodeMeta>;
@@ -226,6 +255,7 @@ export interface TimelineElements {
   __aoe4BuildOrderRetryScheduled?: boolean;
   __aoe4BuildOrderObserver?: MutationObserver | null;
   __aoe4ArmyModeToggle?: HTMLElement | null;
+  __aoe4VillagerCapControl?: HTMLElement | null;
   __aoe4SuppressHoverUntilMove?: boolean;
   __aoe4SuppressHoverAbort?: AbortController | null;
 }
@@ -340,6 +370,8 @@ export interface PlayerToggleHandler {
   onClick: (event: MouseEvent) => void;
   onEnter?: (event: MouseEvent) => void;
   onLeave?: (event: MouseEvent) => void;
+  previousRole?: string | null;
+  previousAriaChecked?: string | null;
 }
 
 export interface UnitDataEntry {

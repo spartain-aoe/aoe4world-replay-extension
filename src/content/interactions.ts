@@ -95,15 +95,78 @@ export function attachPlayerToggle(timeline: TimelineElements, chart: Chart): vo
   const summary = timeline.__aoe4Summary;
   const players: PlayerSummary[] = Array.isArray(summary?.players) ? summary.players : [];
   const rows = [...timeline.root.querySelectorAll<HTMLElement>(TIMELINE_PLAYER_ROW_SELECTOR)];
-  const handlers: PlayerToggleHandler[] = [];
-  for (const row of rows) {
+  const matchedRows = rows.map(row => {
     const text = normalizeName(nativePlayerRowText(row));
-    const player = players.find((p: PlayerSummary) => {
-      const n = normalizeName(p.name);
-      return n && text.includes(n);
+    const player = players.find((candidate: PlayerSummary) => {
+      const name = normalizeName(candidate.name);
+      return name && text.includes(name);
     });
-    if (!player?.name) continue;
-    const playerName = player.name;
+    return player?.name
+      ? {
+          row,
+          playerName: player.name,
+          previousRole: row.getAttribute('role'),
+          previousAriaChecked: row.getAttribute('aria-checked'),
+        }
+      : null;
+  }).filter((entry): entry is {
+    row: HTMLElement;
+    playerName: string;
+    previousRole: string | null;
+    previousAriaChecked: string | null;
+  } => Boolean(entry));
+  const handlers: PlayerToggleHandler[] = [];
+  const radioMode = chart.type === 'villager-efficiency';
+
+  const syncRow = (row: HTMLElement, playerName: string, hidden: boolean): void => {
+    row.style.opacity = hidden ? '0.35' : '';
+    if (radioMode) {
+      row.setAttribute('role', 'radio');
+      row.setAttribute('aria-checked', String(!hidden));
+    }
+    const wasOpen = row.dataset.aoe4LegendOpen === '1';
+    const inlineSummary = row.querySelector<HTMLElement>('.aoe4-inline-legend-summary');
+    const chevronEl = row.querySelector<HTMLElement>('.aoe4-inline-legend-chevron');
+    const panel = [...(row.parentElement?.querySelectorAll<HTMLElement>('.aoe4-legend-breakdown') || [])]
+      .find(node => node.dataset.playerName === playerName);
+    if (inlineSummary) inlineSummary.style.display = hidden ? 'none' : (wasOpen ? 'none' : '');
+    if (chevronEl) chevronEl.style.display = hidden ? 'none' : '';
+    if (panel) panel.style.display = hidden ? 'none' : (wasOpen ? '' : 'none');
+  };
+
+  const selectOnlyPlayer = (playerName: string): void => {
+    chart.highlightKey = null;
+    for (const series of chart.data.series) {
+      if (!series.playerName) continue;
+      series._hidden = series.playerName !== playerName;
+    }
+    for (const entry of matchedRows) {
+      syncRow(entry.row, entry.playerName, entry.playerName !== playerName);
+    }
+  };
+
+  if (radioMode) {
+    const chartPlayerNames = [...new Set(
+      chart.data.series.map(series => series.playerName).filter((name): name is string => Boolean(name))
+    )];
+    const visiblePlayerNames = chartPlayerNames.filter(playerName =>
+      chart.data.series.some(series => series.playerName === playerName && !series._hidden)
+    );
+    const selectedPlayerName = visiblePlayerNames.length === 1
+      ? visiblePlayerNames[0]
+      : matchedRows[0]?.playerName || chart.nativePlayerOrder?.[0] || chartPlayerNames[0];
+    if (selectedPlayerName) {
+      selectOnlyPlayer(selectedPlayerName);
+      recomputeVisibleGeometry(chart);
+    }
+  }
+
+  for (const {
+    row,
+    playerName,
+    previousRole,
+    previousAriaChecked,
+  } of matchedRows) {
     const iconWrapper = row.firstElementChild;
     const nameEl = row.querySelector<HTMLElement>(TIMELINE_PLAYER_NAME_SELECTOR);
     const onClick = (e: MouseEvent): void => {
@@ -117,17 +180,13 @@ export function attachPlayerToggle(timeline: TimelineElements, chart: Chart): vo
       const seriesForPlayer = chart.data.series.filter(s =>
         s.playerName === playerName || s.label === playerName
       );
-      const anyVisible = seriesForPlayer.some(s => !s._hidden);
-      for (const s of seriesForPlayer) s._hidden = anyVisible;
-      row.style.opacity = anyVisible ? '0.35' : '';
-      const wasOpen = row.dataset.aoe4LegendOpen === '1';
-      const inlineSummary = row.querySelector<HTMLElement>('.aoe4-inline-legend-summary');
-      const chevronEl = row.querySelector<HTMLElement>('.aoe4-inline-legend-chevron');
-      const panel = [...(row.parentElement?.querySelectorAll<HTMLElement>('.aoe4-legend-breakdown') || [])]
-        .find(node => node.dataset.playerName === playerName);
-      if (inlineSummary) inlineSummary.style.display = anyVisible ? 'none' : (wasOpen ? 'none' : '');
-      if (chevronEl) chevronEl.style.display = anyVisible ? 'none' : '';
-      if (panel) panel.style.display = anyVisible ? 'none' : (wasOpen ? '' : 'none');
+      if (radioMode) {
+        selectOnlyPlayer(playerName);
+      } else {
+        const anyVisible = seriesForPlayer.some(s => !s._hidden);
+        for (const series of seriesForPlayer) series._hidden = anyVisible;
+        syncRow(row, playerName, anyVisible);
+      }
       delete chart._cachedPlotH;
       delete chart._cachedMarginTop;
       delete chart._cachedYMin;
@@ -137,7 +196,7 @@ export function attachPlayerToggle(timeline: TimelineElements, chart: Chart): vo
       drawTimelineCanvasChart(timeline.canvas, chart);
     };
     row.addEventListener('click', onClick, true);
-    const highlightKeyForPlayer = chart.type === 'army'
+    const highlightKeyForPlayer = chart.type === 'army' || chart.type === 'villager-efficiency'
       ? playerCacheKey(playerName)
       : chart.data.series.find(s => s.playerName === playerName || s.label === playerName)?.key || null;
     if (highlightKeyForPlayer) {
@@ -155,9 +214,19 @@ export function attachPlayerToggle(timeline: TimelineElements, chart: Chart): vo
       };
       row.addEventListener('mouseenter', onEnter);
       row.addEventListener('mouseleave', onLeave);
-      handlers.push({ row, onClick, onEnter, onLeave });
+      handlers.push({
+        row,
+        onClick,
+        onEnter,
+        onLeave,
+        ...(radioMode ? { previousRole, previousAriaChecked } : {}),
+      });
     } else {
-      handlers.push({ row, onClick });
+      handlers.push({
+        row,
+        onClick,
+        ...(radioMode ? { previousRole, previousAriaChecked } : {}),
+      });
     }
   }
   timeline.__aoe4PlayerToggleHandlers = handlers;
@@ -171,6 +240,12 @@ export function detachPlayerToggle(timeline: TimelineElements): void {
     if (h.onEnter) h.row.removeEventListener('mouseenter', h.onEnter);
     if (h.onLeave) h.row.removeEventListener('mouseleave', h.onLeave);
     h.row.style.opacity = '';
+    if ('previousRole' in h) {
+      if (h.previousRole == null) h.row.removeAttribute('role');
+      else h.row.setAttribute('role', h.previousRole);
+      if (h.previousAriaChecked == null) h.row.removeAttribute('aria-checked');
+      else h.row.setAttribute('aria-checked', h.previousAriaChecked);
+    }
   }
   delete timeline.__aoe4PlayerToggleHandlers;
 }
@@ -180,7 +255,7 @@ export function recomputeVisibleGeometry(chart: Chart): void {
   let yMin = 0;
   let yMax = 1;
   for (const series of chart.data.series) {
-    if (series._hidden) continue;
+    if (series._hidden || series.render === 'metric') continue;
     const vals = (chart.type === 'army' && series._stackTop) ? series._stackTop : series.values;
     for (const value of vals) {
       if (value < yMin) yMin = value;
@@ -207,11 +282,13 @@ export function recomputeVisibleGeometry(chart: Chart): void {
           Math.abs(previous) === 0 && Math.abs(next) === 0) continue;
       rows.push({ seriesIdx: s, value, previous, next, delta });
     }
-    if (chart.type !== 'army' && rows.length) {
+    if (chart.type !== 'army' && chart.type !== 'villager-efficiency' && rows.length) {
       const maxValue = rows.reduce((max, row) => Math.max(max, row.value), -Infinity);
       for (const row of rows) row.delta = row.value - maxValue;
     }
-    rows.sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
+    if (chart.type !== 'villager-efficiency') {
+      rows.sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
+    }
     tooltipRows[i] = rows;
   }
   chart._tooltipRows = tooltipRows;

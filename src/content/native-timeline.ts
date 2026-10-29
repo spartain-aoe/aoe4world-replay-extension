@@ -4,6 +4,7 @@ import {
   removeArmyUnitLegend,
 } from './legend.ts';
 import { detachArmyModeToggle } from './army-mode.ts';
+import { detachVillagerSoftCapControl } from './villager-cap.ts';
 import { detachCanvasTooltip } from './tooltip.ts';
 import {
   detachTimelineHoverGuard,
@@ -47,6 +48,7 @@ export function nativePlayerRowText(row: Element): string {
 export function restoreNativeTimeline(timeline: TimelineElements): void {
   removeArmyUnitLegend(timeline);
   detachArmyModeToggle(timeline);
+  detachVillagerSoftCapControl(timeline);
   detachTimelineHoverGuard(timeline);
   detachCanvasTooltip(timeline.canvas);
   detachPlayerToggle(timeline);

@@ -1,6 +1,6 @@
 # AoE4 Replay Launcher
 
-Watch any AoE4 ranked game replay directly from [aoe4world.com](https://aoe4world.com) with one click. Optionally inject custom charts (army composition, resource gathered, combat value, and villager losses) and in-game player colors.
+Watch any AoE4 ranked game replay directly from [aoe4world.com](https://aoe4world.com) with one click. Optionally inject custom charts (army composition, resource gathered, combat value, and villager efficiency) and in-game player colors.
 
 ![Games list with Watch Replay buttons](assets/screenshot-3.png)
 
@@ -8,7 +8,7 @@ Watch any AoE4 ranked game replay directly from [aoe4world.com](https://aoe4worl
 
 - **One-click replay launching** from any game on aoe4world.com
 - **Save replays** — star games to keep them locally for offline viewing
-- **Custom charts** — army composition, resource gathered, army value lead, destroyed value, and villagers killed/lost timelines on game summary pages (on by default)
+- **Custom charts** — army composition, resource gathered, army value lead, destroyed value, and villager efficiency timelines on game summary pages (on by default)
 - **Combat value stats** — adds K/D Cost beside K/D using authoritative unit costs
 - **In-game player colors** — recolors aoe4world's default swatches with actual replay colors (on by default)
 - **Patch-aware** — warns when a replay is from a previous patch, shows "Replay Unavailable" for older patches
@@ -40,12 +40,14 @@ Or load manually:
 Click the extension icon to open settings:
 
 - **Parse additional game data** — master toggle for chart/color features
-  - **Inject custom charts** — adds army composition, resource, value, and villager combat charts to game pages
+  - **Inject custom charts** — adds army composition, resource, value, and villager efficiency charts to game pages
   - **Use in-game player colors** — recolors swatches with actual replay colors
 
 Charts and in-game player colors are **on by default**. Open the settings panel to turn any of them off. Replay launching works regardless of these settings.
 
-Per-player K/D Cost and villagers killed attribution are exact for 1v1 games. When AoE4 World does not expose complete typed destruction events, K/D Cost is shown as unavailable instead of using a partial total.
+K/D Cost is exact for 1v1 games. When AoE4 World does not expose complete typed destruction events, it is shown as unavailable instead of using a partial total.
+
+Villager Efficiency compares each player's actual living villagers with uninterrupted production from every observed villager-producing structure. Red shading shows cumulative villagers killed; amber shading shows cumulative missed production and never decreases. The soft cap (120 by default) stops adding new missed villagers but preserves the existing deficit, and is editable in the chart's top-right corner. The legend acts as a player radio selector so the chart displays one player at a time. Civilization-specific train times and mechanics include dynamic bonuses such as Chinese Song Dynasty, French age scaling, Tughlaq governors, Japanese Town Center Yorishiro, and Jin Dynasty tributary build-limit increases.
 
 ## Development
 

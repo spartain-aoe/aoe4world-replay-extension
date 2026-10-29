@@ -2,7 +2,11 @@ import { getGameIdFromUrl, normalizeName } from './dom.ts';
 import { numericArray } from './chart-utils.ts';
 import { isVillagerUnit } from './combat-units.ts';
 import { unitCostTotal, unitMergeKey } from './unit-mapping.ts';
-import { lookupCostByMergeKey, resolveUnitByPbgid } from './pbgid-map.ts';
+import {
+  ensurePbgidMap,
+  lookupCostByMergeKey,
+  resolveUnitByPbgid,
+} from './pbgid-map.ts';
 import { lookupUnitDataByPbgid, lookupUnitDataForIcon } from './unit-data-cache.ts';
 import type { BuildOrderItem, GameSummary, PlayerSummary, UnitDataEntry } from './types.ts';
 import type { GetStatsMetricsResponse, StatsPlayerMetric } from '../shared/stats-metrics.ts';
@@ -499,6 +503,11 @@ export function scheduleDetailsTableMetrics(summary: GameSummary, gameId?: strin
   const installCurrentMetrics = (): void => {
     installDetailsTableMetrics(summary, currentStatsMetrics);
   };
+  ensurePbgidMap(() => {
+    if (token !== detailsInstallToken) return;
+    if (gameId && getGameIdFromUrl(window.location.href) !== gameId) return;
+    installCurrentMetrics();
+  });
   const delays = [0, 500, 1500, 4000];
   for (const delay of delays) {
     scheduleDetailsTimer(() => {

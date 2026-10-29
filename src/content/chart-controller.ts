@@ -38,6 +38,10 @@ import {
   refreshArmyLegendNames,
 } from './legend.ts';
 import { renderArmyModeToggle, detachArmyModeToggle } from './army-mode.ts';
+import {
+  detachVillagerSoftCapControl,
+  renderVillagerSoftCapControl,
+} from './villager-cap.ts';
 import { clearRangeState, syncRangeUi } from './range.ts';
 import { attachCanvasTooltip, detachCanvasTooltip } from './tooltip.ts';
 import {
@@ -56,12 +60,14 @@ import type {
 } from './types.ts';
 
 type CombatMetricsApi = {
-  buildVillagerCombatCharts(
+  applyVillagerEfficiencySoftCap(chart: Chart, softCap: number): void;
+  buildVillagerEfficiencyCharts(
     summary: GameSummary,
     nativeColors: Map<string, string>,
     nativePlayerOrder?: string[],
   ): Chart[];
   clearDetailsTableMetrics(): void;
+  ensureData(): Promise<void>;
   scheduleDetailsTableMetrics(summary: GameSummary, gameId?: string): void;
 };
 
@@ -240,7 +246,10 @@ export function tryAddSummaryCharts(): void {
       } else {
         warnReplayColorFailure(gameId, replayColors);
       }
-      await ensurePbgidMap();
+      await Promise.all([
+        ensurePbgidMap(),
+        combatMetrics.ensureData(),
+      ]);
       if (!isCurrentGameRequest(timeline, gameId, routeToken)) {
         if (timeline.root.dataset.aoe4SummaryPlusPendingUrl === url) {
           delete timeline.root.dataset.aoe4SummaryPlusPendingUrl;
@@ -448,7 +457,7 @@ function buildTimelineChartCatalog(summary: GameSummary, nativeColors: Map<strin
     .concat(buildArmyCharts(summary, nativeColors, nativePlayerOrder) as Chart[])
     .concat(buildArmyValueLeadCharts(summary, nativeColors, nativePlayerOrder) as Chart[])
     .concat(buildDestroyedValueCharts(summary, nativeColors, nativePlayerOrder) as Chart[])
-    .concat(combatMetrics.buildVillagerCombatCharts(summary, nativeColors, nativePlayerOrder))
+    .concat(combatMetrics.buildVillagerEfficiencyCharts(summary, nativeColors, nativePlayerOrder))
     .concat(buildResourceGatheredCharts(summary, nativeColors) as Chart[]);
   const ageUps = extractAgeUps(summary, nativeColors) as AgeUp[];
   for (const chart of charts) {
@@ -463,6 +472,7 @@ function precomputeChartGeometry(chart: Chart): void {
   let yMin = 0;
   let yMax = 1;
   for (const series of chart.data.series) {
+    if (series.render === 'metric') continue;
     const vals = (chart.type === 'army' && series._stackTop) ? series._stackTop : series.values;
     for (const value of vals) {
       if (value < yMin) yMin = value;
@@ -489,14 +499,16 @@ function precomputeChartGeometry(chart: Chart): void {
           Math.abs(previous) === 0 && Math.abs(next) === 0) continue;
       rows.push({ seriesIdx: s, value, previous, next, delta });
     }
-    if (chart.type !== 'army' && rows.length) {
+    if (chart.type !== 'army' && chart.type !== 'villager-efficiency' && rows.length) {
       const maxValue = rows.reduce((max: number, row: TooltipCacheRow) => Math.max(max, row.value), -Infinity);
       for (const row of rows) {
         row.delta = row.value - maxValue;
         row.isLeader = row.delta === 0;
       }
     }
-    rows.sort((a: TooltipCacheRow, b: TooltipCacheRow) => Math.abs(b.value) - Math.abs(a.value));
+    if (chart.type !== 'villager-efficiency') {
+      rows.sort((a: TooltipCacheRow, b: TooltipCacheRow) => Math.abs(b.value) - Math.abs(a.value));
+    }
     tooltipRows[i] = rows;
   }
   chart._tooltipRows = tooltipRows;
@@ -650,9 +662,19 @@ function renderTimelineMetric(timeline: TimelineElements, chart: Chart): void {
   if (chart.type === 'army') {
     renderArmyUnitLegend(timeline, chart);
     renderArmyModeToggle(timeline, chart);
+    detachVillagerSoftCapControl(timeline);
+  } else if (chart.type === 'villager-efficiency') {
+    removeArmyUnitLegend(timeline);
+    detachArmyModeToggle(timeline);
+    renderVillagerSoftCapControl(
+      timeline,
+      chart,
+      combatMetrics.applyVillagerEfficiencySoftCap,
+    );
   } else {
     removeArmyUnitLegend(timeline);
     detachArmyModeToggle(timeline);
+    detachVillagerSoftCapControl(timeline);
   }
   animateTimelineCanvasChart(canvas, chart);
   attachTimelineHoverGuard(timeline, chart);

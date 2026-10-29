@@ -1,7 +1,7 @@
 /**
  * Integration coverage for the Summary+ features added on this branch:
  * - Idle TC and K/D Cost details-table columns.
- * - Villagers Killed / Lost timeline rendering.
+ * - Villager Efficiency ideal/actual lines and killed/missed-production bands.
  * - Summary+ chart option ordering.
  * - Army Count/Value toggle labels and Value-mode data for override-only PBGIDs.
  * - Range-selection legend deltas in Value mode are resource-weighted, not counts.
@@ -626,7 +626,7 @@ async function installNumudanRoutesWithDelayedPbgidMap(delayMs = 2500) {
       'Army Composition',
       'Army Value Lead',
       'Destroyed Value',
-      'Villagers Killed / Lost',
+      'Villager Efficiency',
       'Resources Gathered: Total',
       'Resources Gathered: Food',
       'Resources Gathered: Wood',
@@ -650,27 +650,93 @@ async function installNumudanRoutesWithDelayedPbgidMap(delayMs = 2500) {
     );
   });
 
-  await test('Villagers Killed / Lost can be selected and rendered', async () => {
+  await test('Villager Efficiency can be selected and exposes all four tooltip metrics', async () => {
     const selected = await page.evaluate(() => {
       const select = document.querySelector('select');
       const option = [...(select?.querySelectorAll('option') || [])]
-        .find(opt => (opt.textContent || '').trim() === 'Villagers Killed / Lost');
+        .find(opt => (opt.textContent || '').trim() === 'Villager Efficiency');
       if (!select || !option) return false;
       select.value = option.value;
       select.dispatchEvent(new Event('input', { bubbles: true }));
       select.dispatchEvent(new Event('change', { bubbles: true }));
       return true;
     });
-    assert(selected, 'Villagers Killed / Lost option not found');
+    assert(selected, 'Villager Efficiency option not found');
     await page.waitForFunction(() => {
       const heading = [...document.querySelectorAll('h3')]
-        .find(h => (h.textContent || '').includes('Villagers Killed / Lost'));
+        .find(h => (h.textContent || '').includes('Villager Efficiency'));
       const canvas = document.querySelector('canvas[data-aoe4-summary-canvas]');
       if (!heading || !canvas) return false;
       const style = getComputedStyle(canvas);
       const rect = canvas.getBoundingClientRect();
       return style.display !== 'none' && rect.width > 0 && rect.height > 0;
     }, null, { timeout: 10000 });
+
+    const initialRadios = await page.evaluate(() =>
+      [...document.querySelectorAll('.flex.items-center.cursor-pointer[role="radio"]')]
+        .map(row => ({
+          text: (row.textContent || '').replace(/\s+/g, ' ').trim(),
+          checked: row.getAttribute('aria-checked'),
+          opacity: row.style.opacity,
+        }))
+    );
+    assert(initialRadios.length === 2, `expected two Villager Efficiency radios: ${JSON.stringify(initialRadios)}`);
+    assert(initialRadios.filter(row => row.checked === 'true').length === 1,
+      `Villager Efficiency should initially show one player: ${JSON.stringify(initialRadios)}`);
+    assert(initialRadios.filter(row => row.checked === 'false').every(row => row.opacity === '0.35'),
+      `unselected Villager Efficiency radios should be dimmed: ${JSON.stringify(initialRadios)}`);
+
+    const switchedRadio = await page.evaluate(() => {
+      const rows = [...document.querySelectorAll('.flex.items-center.cursor-pointer[role="radio"]')];
+      const target = rows.find(row => row.getAttribute('aria-checked') === 'false');
+      const clickable = target?.querySelector('.font-bold, [class*="font-bold"]');
+      if (!target || !clickable) return null;
+      const targetText = (target.textContent || '').replace(/\s+/g, ' ').trim();
+      clickable.click();
+      return {
+        targetText,
+        rows: rows.map(row => ({
+          text: (row.textContent || '').replace(/\s+/g, ' ').trim(),
+          checked: row.getAttribute('aria-checked'),
+        })),
+      };
+    });
+    assert(switchedRadio, 'could not switch Villager Efficiency player radio');
+    assert(switchedRadio.rows.filter(row => row.checked === 'true').length === 1,
+      `radio switch should leave exactly one player selected: ${JSON.stringify(switchedRadio)}`);
+    assert(switchedRadio.rows.find(row => row.text === switchedRadio.targetText)?.checked === 'true',
+      `clicked Villager Efficiency radio was not selected: ${JSON.stringify(switchedRadio)}`);
+
+    const canvas = page.locator('canvas[data-aoe4-summary-canvas]');
+    const box = await canvas.boundingBox();
+    assert(box, 'Villager Efficiency canvas has no bounding box');
+    await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.5);
+    await page.waitForFunction(() => {
+      const tooltip = document.querySelector('.aoe4-summary-html-tooltip');
+      const text = (tooltip?.textContent || '').replace(/\s+/g, ' ');
+      return tooltip && getComputedStyle(tooltip).display !== 'none' &&
+        ['Actual', 'Ideal', 'Missed production', 'Killed'].every(label => text.includes(label));
+    }, null, { timeout: 10000 });
+
+    const capState = await page.evaluate(() => {
+      const input = document.querySelector('.aoe4-villager-cap-control-input');
+      if (!input) return null;
+      const initial = input.value;
+      input.value = '135';
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      const result = {
+        initial,
+        edited: input.value,
+        stored: localStorage.getItem('aoe4plus.villagerSoftCap'),
+      };
+      input.value = '120';
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      return result;
+    });
+    assert(capState, 'Villager soft-cap editor not found');
+    assert(capState.initial === '120', `unexpected default villager soft cap: ${JSON.stringify(capState)}`);
+    assert(capState.edited === '135', `villager soft-cap input did not retain edit: ${JSON.stringify(capState)}`);
+    assert(capState.stored === '135', `villager soft-cap edit was not applied: ${JSON.stringify(capState)}`);
   });
 
   await test('Army Value mode has Count/Value labels and non-zero value data for override-only PBGIDs', async () => {

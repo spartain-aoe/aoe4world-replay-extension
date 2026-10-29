@@ -113,6 +113,39 @@ export function appendUpgradeTooltipLabel(
   return upgLabel;
 }
 
+export function appendVillagerEfficiencyTooltipRows(
+  tooltip: HTMLElement,
+  rows: TooltipRow[],
+): void {
+  const grouped = new Map<string, TooltipRow[]>();
+  for (const row of rows) {
+    const playerName = row.item.playerName || 'Player';
+    const playerRows = grouped.get(playerName);
+    if (playerRows) playerRows.push(row);
+    else grouped.set(playerName, [row]);
+  }
+  let groupIndex = 0;
+  for (const [playerName, playerRows] of grouped) {
+    if (groupIndex++ > 0) {
+      const divider = document.createElement('div');
+      divider.className = 'aoe4-summary-tooltip-divider';
+      tooltip.appendChild(divider);
+    }
+    const header = document.createElement('div');
+    header.className = 'aoe4-summary-tooltip-section';
+    header.textContent = playerName;
+    tooltip.appendChild(header);
+    for (const row of playerRows) {
+      appendTooltipRow(
+        tooltip,
+        { ...row, delta: 0 },
+        { type: 'villager-efficiency' },
+        playerName,
+      );
+    }
+  }
+}
+
 export function updateCanvasTooltip(
   tooltip: TooltipElement,
   canvas: HTMLCanvasElement,
@@ -155,6 +188,8 @@ export function updateCanvasTooltip(
 
     if (chart.type === 'army') {
       appendArmyTooltipRows(tooltip, rows, chart);
+    } else if (chart.type === 'villager-efficiency') {
+      appendVillagerEfficiencyTooltipRows(tooltip, rows);
     } else if (chart.type === 'lead') {
       const allSeries = chart.data.series;
       const rawRows: TooltipRow[] = allSeries.map((s): TooltipRow => {
