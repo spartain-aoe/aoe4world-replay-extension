@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 import { parseHTML } from 'linkedom';
 
 import {
-  detachVillagerSoftCapControl,
-  getActiveVillagerSoftCap,
-  renderVillagerSoftCapControl,
-  setActiveVillagerSoftCap,
-} from '../../src/content/villager-cap.ts';
+  detachVillagerTargetControl,
+  getActiveVillagerCropToTarget,
+  getActiveVillagerTarget,
+  renderVillagerTargetControl,
+  setActiveVillagerTarget,
+} from '../../src/content/villager-target.ts';
 
 function makeDomGlobals() {
   const { window, document } = parseHTML('<!doctype html><html><body></body></html>');
@@ -34,7 +35,7 @@ function makeChart(type = 'villager-efficiency') {
     type,
     value: 'aoe4plus:villager-efficiency',
     title: 'Villager Efficiency',
-    options: { height: 280, villagerSoftCap: 120 },
+    options: { height: 280, villagerTarget: 120 },
     data: {
       labels: [0, 10],
       series: [{
@@ -57,7 +58,7 @@ function makeTimeline(document) {
   return { chartBox, canvas };
 }
 
-describe('villager soft-cap control', () => {
+describe('villager target control', () => {
   beforeEach(() => {
     makeDomGlobals();
   });
@@ -71,100 +72,113 @@ describe('villager soft-cap control', () => {
     delete globalThis.localStorage;
   });
 
-  test('mounts a top-right numeric cap editor and applies valid changes', () => {
+  test('mounts a top-right numeric target editor and applies valid changes', () => {
     const chart = makeChart();
     const timeline = makeTimeline(document);
     const applied = [];
 
-    renderVillagerSoftCapControl(timeline, chart, (target, cap) => {
-      target.options.villagerSoftCap = cap;
-      applied.push(cap);
+    renderVillagerTargetControl(timeline, chart, (targetChart, target) => {
+      targetChart.options.villagerTarget = target;
+      applied.push(target);
     });
 
-    const control = timeline.chartBox.querySelector('.aoe4-villager-cap-control');
+    const control = timeline.chartBox.querySelector('.aoe4-villager-target-control');
     const input = control?.querySelector('input');
     assert.ok(control);
-    assert.equal(control.querySelector('label')?.textContent?.trim(), 'Soft cap');
+    assert.equal(control.querySelector('label')?.textContent?.trim(), 'Target');
     assert.equal(input?.value, '120');
+    assert.equal(input?.getAttribute('aria-label'), 'Villager production target');
     assert.equal(timeline.chartBox.style.position, 'relative');
 
     input.value = '140';
     input.dispatchEvent(new Event('change', { bubbles: true }));
 
     assert.deepEqual(applied, [120, 140]);
-    assert.equal(chart.options.villagerSoftCap, 140);
-    assert.equal(getActiveVillagerSoftCap(), 140);
+    assert.equal(chart.options.villagerTarget, 140);
+    assert.equal(getActiveVillagerTarget(), 140);
   });
 
   test('normalizes invalid persisted and entered values to a positive integer', () => {
-    localStorage.setItem('aoe4plus.villagerSoftCap', 'not-a-number');
-    assert.equal(getActiveVillagerSoftCap(), 120);
-    assert.equal(setActiveVillagerSoftCap(75.6), 76);
+    localStorage.setItem('aoe4plus.villagerTarget', 'not-a-number');
+    assert.equal(getActiveVillagerTarget(), 120);
+    assert.equal(setActiveVillagerTarget(75.6), 76);
 
     const chart = makeChart();
     const timeline = makeTimeline(document);
-    renderVillagerSoftCapControl(timeline, chart, (target, cap) => {
-      target.options.villagerSoftCap = cap;
+    renderVillagerTargetControl(timeline, chart, (targetChart, target) => {
+      targetChart.options.villagerTarget = target;
     });
-    const input = timeline.chartBox.querySelector('.aoe4-villager-cap-control input');
+    const input = timeline.chartBox.querySelector('.aoe4-villager-target-control input');
     input.value = '0';
     input.dispatchEvent(new Event('change', { bubbles: true }));
 
     assert.equal(input.value, '1');
-    assert.equal(chart.options.villagerSoftCap, 1);
+    assert.equal(chart.options.villagerTarget, 1);
   });
 
-  test('uses an icon button to persistently crop the chart at the soft cap', () => {
+  test('migrates legacy soft-cap and crop settings to target keys', () => {
+    localStorage.setItem('aoe4plus.villagerSoftCap', '135');
+    localStorage.setItem('aoe4plus.villagerCropToSoftCap', 'true');
+
+    assert.equal(getActiveVillagerTarget(), 135);
+    assert.equal(getActiveVillagerCropToTarget(), true);
+    assert.equal(localStorage.getItem('aoe4plus.villagerTarget'), '135');
+    assert.equal(localStorage.getItem('aoe4plus.villagerCropToTarget'), 'true');
+    assert.equal(localStorage.getItem('aoe4plus.villagerSoftCap'), null);
+    assert.equal(localStorage.getItem('aoe4plus.villagerCropToSoftCap'), null);
+  });
+
+  test('uses an icon button to persistently crop the chart at the target', () => {
     const chart = makeChart();
     chart.data.series[0].values = [6, 150];
     const timeline = makeTimeline(document);
 
-    renderVillagerSoftCapControl(timeline, chart, (target, cap) => {
-      target.options.villagerSoftCap = cap;
+    renderVillagerTargetControl(timeline, chart, (targetChart, target) => {
+      targetChart.options.villagerTarget = target;
     });
 
-    const cropButton = timeline.chartBox.querySelector('.aoe4-villager-cap-control-crop');
+    const cropButton = timeline.chartBox.querySelector('.aoe4-villager-target-control-crop');
     assert.ok(cropButton);
     assert.equal(cropButton.textContent.trim(), '');
-    assert.equal(cropButton.getAttribute('aria-label'), 'Crop chart to villager soft cap');
+    assert.equal(cropButton.getAttribute('aria-label'), 'Crop chart to villager target');
     assert.equal(cropButton.getAttribute('aria-pressed'), 'false');
     assert.ok(chart._geometry.yMax > 120);
 
     cropButton.click();
 
     assert.equal(cropButton.getAttribute('aria-pressed'), 'true');
-    assert.equal(localStorage.getItem('aoe4plus.villagerCropToSoftCap'), 'true');
-    assert.equal(chart.options.villagerCropToSoftCap, true);
+    assert.equal(localStorage.getItem('aoe4plus.villagerCropToTarget'), 'true');
+    assert.equal(chart.options.villagerCropToTarget, true);
     assert.equal(chart._geometry.yMax, 120);
 
     cropButton.click();
 
     assert.equal(cropButton.getAttribute('aria-pressed'), 'false');
-    assert.equal(localStorage.getItem('aoe4plus.villagerCropToSoftCap'), 'false');
-    assert.equal(chart.options.villagerCropToSoftCap, false);
+    assert.equal(localStorage.getItem('aoe4plus.villagerCropToTarget'), 'false');
+    assert.equal(chart.options.villagerCropToTarget, false);
     assert.ok(chart._geometry.yMax > 120);
   });
 
   test('re-rendering replaces the control and detach removes it', () => {
     const chart = makeChart();
     const timeline = makeTimeline(document);
-    const apply = (target, cap) => {
-      target.options.villagerSoftCap = cap;
+    const apply = (targetChart, target) => {
+      targetChart.options.villagerTarget = target;
     };
 
-    renderVillagerSoftCapControl(timeline, chart, apply);
-    renderVillagerSoftCapControl(timeline, chart, apply);
-    assert.equal(timeline.chartBox.querySelectorAll('.aoe4-villager-cap-control').length, 1);
+    renderVillagerTargetControl(timeline, chart, apply);
+    renderVillagerTargetControl(timeline, chart, apply);
+    assert.equal(timeline.chartBox.querySelectorAll('.aoe4-villager-target-control').length, 1);
 
-    detachVillagerSoftCapControl(timeline);
-    assert.equal(timeline.chartBox.querySelector('.aoe4-villager-cap-control'), null);
-    assert.equal(timeline.__aoe4VillagerCapControl, null);
+    detachVillagerTargetControl(timeline);
+    assert.equal(timeline.chartBox.querySelector('.aoe4-villager-target-control'), null);
+    assert.equal(timeline.__aoe4VillagerTargetControl, null);
   });
 
   test('does not render for other chart types', () => {
     const chart = makeChart('resources');
     const timeline = makeTimeline(document);
-    renderVillagerSoftCapControl(timeline, chart, () => {});
-    assert.equal(timeline.chartBox.querySelector('.aoe4-villager-cap-control'), null);
+    renderVillagerTargetControl(timeline, chart, () => {});
+    assert.equal(timeline.chartBox.querySelector('.aoe4-villager-target-control'), null);
   });
 });

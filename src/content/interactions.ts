@@ -299,15 +299,15 @@ export function recomputeVisibleGeometry(chart: Chart): void {
       if (value > yMax) yMax = value;
     }
   }
-  const villagerSoftCap = chart.type === 'villager-efficiency'
-    ? Number(chart.options?.villagerSoftCap)
+  const villagerTarget = chart.type === 'villager-efficiency'
+    ? Number(chart.options?.villagerTarget)
     : Number.NaN;
-  if (Number.isFinite(villagerSoftCap) && villagerSoftCap > 0) {
-    if (chart.options?.villagerCropToSoftCap === true) {
-      const geometry = niceGeometryForChart(chart.type, yMin, villagerSoftCap);
-      chart._geometry = { yMin: geometry.yMin, yMax: villagerSoftCap };
+  if (Number.isFinite(villagerTarget) && villagerTarget > 0) {
+    if (chart.options?.villagerCropToTarget === true) {
+      const geometry = niceGeometryForChart(chart.type, yMin, villagerTarget);
+      chart._geometry = { yMin: geometry.yMin, yMax: villagerTarget };
     } else {
-      chart._geometry = niceGeometryForChart(chart.type, yMin, Math.max(yMax, villagerSoftCap));
+      chart._geometry = niceGeometryForChart(chart.type, yMin, Math.max(yMax, villagerTarget));
     }
   } else {
     chart._geometry = niceGeometryForChart(chart.type, yMin, yMax);

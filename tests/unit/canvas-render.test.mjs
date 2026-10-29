@@ -165,7 +165,7 @@ describe('drawTimelineCanvasChart', () => {
     const chart = makeChart('villager-efficiency', [actual, ideal, missed, killed], {
       labels: [0, 10, 20],
       geometry: { yMin: 0, yMax: 10 },
-      options: { villagerSoftCap: 8 },
+      options: { villagerTarget: 8 },
     });
     chart.bands = [
       {
@@ -195,12 +195,12 @@ describe('drawTimelineCanvasChart', () => {
     );
     assert.ok(
       canvas._ctx._calls.some(call => call.m === 'setLineDash' && call.args[0]?.join(',') === '8,5'),
-      'expected a horizontal dashed line at the villager soft cap',
+      'expected a horizontal dashed line at the villager target',
     );
     assert.equal(
       canvas._ctx._calls.filter(call => call.m === 'setLineDash' && call.args[0]?.length === 0).length,
       3,
-      'the two line series and soft-cap reference should reset their stroke patterns',
+      'the two line series and target reference should reset their stroke patterns',
     );
   });
 

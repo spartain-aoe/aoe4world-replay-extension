@@ -1,5 +1,5 @@
 import {
-  applyVillagerEfficiencySoftCap,
+  applyVillagerEfficiencyTarget,
   buildVillagerEfficiencyCharts,
 } from './chart-villagers.ts';
 import {
@@ -9,7 +9,7 @@ import {
 import { ensurePbgidMap } from './pbgid-map.ts';
 
 const combatMetrics = {
-  applyVillagerEfficiencySoftCap,
+  applyVillagerEfficiencyTarget,
   buildVillagerEfficiencyCharts,
   clearDetailsTableMetrics,
   ensureData: ensurePbgidMap,

@@ -531,22 +531,22 @@ export function drawTimelineCanvasChart(
   ctx.globalAlpha = 1;
   ctx.restore();
 
-  const villagerSoftCap = chart.type === 'villager-efficiency'
-    ? Number(chart.options?.villagerSoftCap)
+  const villagerTarget = chart.type === 'villager-efficiency'
+    ? Number(chart.options?.villagerTarget)
     : Number.NaN;
   if (
-    Number.isFinite(villagerSoftCap) &&
-    villagerSoftCap >= yMin &&
-    villagerSoftCap <= yMax
+    Number.isFinite(villagerTarget) &&
+    villagerTarget >= yMin &&
+    villagerTarget <= yMax
   ) {
-    const capY = summaryScaleY(villagerSoftCap, yMin, yMax, margin, plotH);
+    const targetY = summaryScaleY(villagerTarget, yMin, yMax, margin, plotH);
     ctx.save();
     ctx.strokeStyle = 'rgba(226,232,240,0.65)';
     ctx.lineWidth = 1.25;
     ctx.setLineDash([8, 5]);
     ctx.beginPath();
-    ctx.moveTo(margin.left, capY);
-    ctx.lineTo(cssWidth - margin.right, capY);
+    ctx.moveTo(margin.left, targetY);
+    ctx.lineTo(cssWidth - margin.right, targetY);
     ctx.stroke();
     ctx.setLineDash([]);
     ctx.restore();

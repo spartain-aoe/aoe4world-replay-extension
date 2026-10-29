@@ -139,7 +139,7 @@ export interface ChartSeries {
   _playerBase?: Float32Array | null;
   _playerTop?: Float32Array | null;
   _rawValues?: number[];
-  _uncappedValues?: number[];
+  _rawIdealValues?: number[];
   team?: number;
   render?: 'line' | 'metric';
   lineDash?: number[];
@@ -192,8 +192,8 @@ export interface Chart {
   options?: {
     height?: number;
     armyMode?: 'count' | 'value';
-    villagerSoftCap?: number;
-    villagerCropToSoftCap?: boolean;
+    villagerTarget?: number;
+    villagerCropToTarget?: boolean;
     [key: string]: unknown;
   };
   data: ChartData;
@@ -258,7 +258,7 @@ export interface TimelineElements {
   __aoe4BuildOrderRetryScheduled?: boolean;
   __aoe4BuildOrderObserver?: MutationObserver | null;
   __aoe4ArmyModeToggle?: HTMLElement | null;
-  __aoe4VillagerCapControl?: HTMLElement | null;
+  __aoe4VillagerTargetControl?: HTMLElement | null;
   __aoe4SuppressHoverUntilMove?: boolean;
   __aoe4SuppressHoverAbort?: AbortController | null;
 }

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  applyVillagerEfficiencySoftCap,
+  applyVillagerEfficiencyTarget,
   buildVillagerEfficiencyCharts,
 } from '../../src/content/chart-villagers.ts';
 import {
@@ -112,7 +112,7 @@ test('buildVillagerEfficiencyCharts separates missed production from villagers k
   assert.deepEqual(chart.data.labels, [0, 10, 20, 30, 40, 50, 60]);
   assert.deepEqual(series(chart, 'Alpha', 'Actual').values, [6, 6, 7, 7, 7, 8, 7]);
   assert.deepEqual(series(chart, 'Alpha', 'Ideal').values, [6, 6, 7, 7, 8, 8, 9]);
-  assert.deepEqual(series(chart, 'Alpha', 'Missed production').values, [0, 0, 0, 0, 1, 1, 1]);
+  assert.deepEqual(series(chart, 'Alpha', 'Missed production').values, [0, 0, 0, 0, 1, 1, 2]);
   assert.deepEqual(series(chart, 'Alpha', 'Killed').values, [0, 0, 0, 0, 0, 0, 1]);
 
   const alphaBands = chart.bands.filter(band => band.playerName === 'Alpha');
@@ -129,7 +129,7 @@ test('buildVillagerEfficiencyCharts separates missed production from villagers k
     {
       label: 'Missed production',
       from: [6, 6, 7, 7, 7, 8, 8],
-      to: [6, 6, 7, 7, 8, 9, 9],
+      to: [6, 6, 7, 7, 8, 9, 10],
     },
   ]);
 });
@@ -342,19 +342,19 @@ test('Japanese ideal production infers a Town Center Yorishiro from sustained lo
   const [chart] = buildVillagerEfficiencyCharts(summary, new Map());
 
   assert.equal(
-    series(chart, 'Alpha', 'Ideal')._uncappedValues.at(-1),
+    series(chart, 'Alpha', 'Ideal')._rawIdealValues.at(-1),
     14,
     'three consecutive 16-second completions identify the +25% Yorishiro work rate',
   );
 });
 
-test('soft cap stops missed debt without flattening uninterrupted ideal production', () => {
+test('target stops missed debt without flattening uninterrupted ideal production', () => {
   const summary = {
     duration: 3000,
     players: [
-      player({ name: 'Capped', profileId: 1 }),
+      player({ name: 'At Target', profileId: 1 }),
       player({
-        name: 'Over Cap',
+        name: 'Over Target',
         profileId: 2,
         finished: new Array(125).fill(0),
       }),
@@ -363,27 +363,27 @@ test('soft cap stops missed debt without flattening uninterrupted ideal producti
 
   const [chart] = buildVillagerEfficiencyCharts(summary, new Map());
 
-  assert.equal(series(chart, 'Capped', 'Ideal').values.at(-1), 156);
-  assert.equal(series(chart, 'Over Cap', 'Ideal').values.at(-1), 275);
-  assert.equal(series(chart, 'Capped', 'Missed production').values.at(-1), 114);
+  assert.equal(series(chart, 'At Target', 'Ideal').values.at(-1), 156);
+  assert.equal(series(chart, 'Over Target', 'Ideal').values.at(-1), 275);
+  assert.equal(series(chart, 'At Target', 'Missed production').values.at(-1), 114);
   assert.equal(
-    chart.bands.find(band => band.playerName === 'Capped' && band.label === 'Missed production').toValues.at(-1),
+    chart.bands.find(band => band.playerName === 'At Target' && band.label === 'Missed production').toValues.at(-1),
     120,
-    'amber missed-production shading stops at the soft cap',
+    'amber missed-production shading stops at the target',
   );
 
-  applyVillagerEfficiencySoftCap(chart, 140);
-  assert.equal(series(chart, 'Capped', 'Ideal').values.at(-1), 156);
-  assert.equal(series(chart, 'Over Cap', 'Ideal').values.at(-1), 275);
-  assert.equal(series(chart, 'Capped', 'Missed production').values.at(-1), 134);
+  applyVillagerEfficiencyTarget(chart, 140);
+  assert.equal(series(chart, 'At Target', 'Ideal').values.at(-1), 156);
+  assert.equal(series(chart, 'Over Target', 'Ideal').values.at(-1), 275);
+  assert.equal(series(chart, 'At Target', 'Missed production').values.at(-1), 134);
 
-  applyVillagerEfficiencySoftCap(chart, 100);
-  assert.equal(series(chart, 'Capped', 'Ideal').values.at(-1), 156);
-  assert.equal(series(chart, 'Capped', 'Missed production').values.at(-1), 94);
-  assert.equal(series(chart, 'Over Cap', 'Ideal').values.at(-1), 275);
+  applyVillagerEfficiencyTarget(chart, 100);
+  assert.equal(series(chart, 'At Target', 'Ideal').values.at(-1), 156);
+  assert.equal(series(chart, 'At Target', 'Missed production').values.at(-1), 94);
+  assert.equal(series(chart, 'Over Target', 'Ideal').values.at(-1), 275);
 });
 
-test('missed production never decreases and stops accumulating after the soft cap', () => {
+test('missed production never decreases and stops accumulating at the target', () => {
   const summary = {
     duration: 80,
     players: [
@@ -394,14 +394,37 @@ test('missed production never decreases and stops accumulating after the soft ca
   };
 
   const [chart] = buildVillagerEfficiencyCharts(summary, new Map());
-  applyVillagerEfficiencySoftCap(chart, 8);
+  applyVillagerEfficiencyTarget(chart, 8);
 
   const missed = series(chart, 'Alpha', 'Missed production').values;
   const ideal = series(chart, 'Alpha', 'Ideal').values;
 
   assert.deepEqual(missed, [0, 0, 1, 1, 1, 1, 1, 1, 1]);
-  assert.equal(ideal[chart.data.labels.indexOf(40)], 8, 'uninterrupted production reaches the cap');
+  assert.equal(ideal[chart.data.labels.indexOf(40)], 8, 'uninterrupted production reaches the target');
   assert.equal(ideal.at(-1), 10, 'uninterrupted ideal keeps rising after missed debt freezes');
+});
+
+test('missed production pauses at the target and resumes after losses dip below it', () => {
+  const summary = {
+    duration: 100,
+    players: [
+      player({
+        finished: [0, 0, 0, 0, 0, 0, 40, 60],
+        destroyed: [90, 90],
+      }),
+    ],
+  };
+
+  const [chart] = buildVillagerEfficiencyCharts(summary, new Map());
+  applyVillagerEfficiencyTarget(chart, 8);
+
+  const missed = series(chart, 'Alpha', 'Missed production').values;
+  const at = seconds => missed[chart.data.labels.indexOf(seconds)];
+
+  assert.equal(at(20), 1, 'missed production accrues while counterfactual living is below target');
+  assert.equal(at(80), 1, 'new idle time is ignored while counterfactual living is at target');
+  assert.equal(at(90), 1, 'villager losses reopen capacity but are not themselves missed production');
+  assert.equal(at(100), 2, 'the next missed completion accrues after losses dip below target');
 });
 
 test('Jin ideal production uses mounted villagers up to 20/23/26 caps, then regular villagers', () => {

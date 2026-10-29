@@ -49,7 +49,7 @@ type ProductionRateChange = {
 
 const KILLED_COLOR = '#EF4444';
 const MISSED_COLOR = '#F59E0B';
-export const DEFAULT_VILLAGER_SOFT_CAP = 120;
+export const DEFAULT_VILLAGER_TARGET = 120;
 const VILLAGE_FORTRESSES_PBGID = 200170;
 const SONG_DYNASTY_PBGID = 158363;
 const LATER_CHINESE_DYNASTY_PBGIDS = new Set([158364, 158365]);
@@ -304,41 +304,38 @@ function inferredYorishiroProducer(
   return null;
 }
 
-function normalizeSoftCap(value: number): number {
-  return Number.isFinite(value) ? Math.max(1, Math.round(value)) : DEFAULT_VILLAGER_SOFT_CAP;
+function normalizeTarget(value: number): number {
+  return Number.isFinite(value) ? Math.max(1, Math.round(value)) : DEFAULT_VILLAGER_TARGET;
 }
 
 function villagerEfficiencyValues(
   rawIdealValues: number[],
   actualValues: number[],
   killedValues: number[],
-  softCap: number,
+  target: number,
 ): {
   idealValues: number[];
   killedUpperValues: number[];
   missedUpperValues: number[];
   missedValues: number[];
 } {
-  const cap = normalizeSoftCap(softCap);
+  const normalizedTarget = normalizeTarget(target);
   const idealValues: number[] = [];
   const killedUpperValues: number[] = [];
   const missedUpperValues: number[] = [];
   const missedValues: number[] = [];
   let cumulativeMissed = 0;
-  let countNewMisses = true;
+  let previousObservedShortfall = 0;
 
   for (let index = 0; index < rawIdealValues.length; index++) {
     const produced = actualValues[index] + killedValues[index];
-    if (countNewMisses) {
-      const observedShortfall = Math.max(0, rawIdealValues[index] - produced);
-      const nextMissed = Math.max(cumulativeMissed, observedShortfall);
-      if (produced + nextMissed >= cap) {
-        cumulativeMissed = Math.max(cumulativeMissed, Math.max(0, cap - produced));
-        countNewMisses = false;
-      } else {
-        cumulativeMissed = nextMissed;
-      }
+    const observedShortfall = Math.max(0, rawIdealValues[index] - produced);
+    const newMissedOpportunity = Math.max(0, observedShortfall - previousObservedShortfall);
+    const targetHeadroom = Math.max(0, normalizedTarget - (actualValues[index] + cumulativeMissed));
+    if (newMissedOpportunity > 0 && targetHeadroom > 0) {
+      cumulativeMissed += Math.min(newMissedOpportunity, targetHeadroom);
     }
+    previousObservedShortfall = observedShortfall;
     const killedUpper = actualValues[index] + killedValues[index];
     killedUpperValues.push(killedUpper);
     missedUpperValues.push(killedUpper + cumulativeMissed);
@@ -348,8 +345,8 @@ function villagerEfficiencyValues(
   return { idealValues, killedUpperValues, missedUpperValues, missedValues };
 }
 
-function villagerEfficiencyMeta(softCap: number): string {
-  return `Actual living villagers versus uninterrupted production from every available producer. The dashed ideal keeps rising while a producer remains available. Missed production is cumulative and stops increasing when the ideal reaches ${normalizeSoftCap(softCap)}. Red shading is villagers killed; amber shading is counted missed production.`;
+function villagerEfficiencyMeta(target: number): string {
+  return `Actual living villagers versus uninterrupted production from every available producer. The dashed ideal keeps rising while a producer remains available. Missed production accrues while actual plus counted missed villagers is below the ${normalizeTarget(target)} target, pauses at or above it, and resumes if losses pull that counterfactual living count below target. Red shading is villagers killed; amber shading is counted missed production.`;
 }
 
 function sameTime(a: number, b: number): boolean {
@@ -455,9 +452,9 @@ function simulateIdealCompletions(
   return completions.sort((a, b) => a - b);
 }
 
-export function applyVillagerEfficiencySoftCap(chart: Chart, softCap: number): void {
+export function applyVillagerEfficiencyTarget(chart: Chart, target: number): void {
   if (chart.type !== 'villager-efficiency') return;
-  const cap = normalizeSoftCap(softCap);
+  const normalizedTarget = normalizeTarget(target);
   const playerNames = new Set(
     chart.data.series.map(series => series.playerName).filter((name): name is string => Boolean(name))
   );
@@ -474,13 +471,13 @@ export function applyVillagerEfficiencySoftCap(chart: Chart, softCap: number): v
     const killed = chart.data.series.find(series =>
       series.playerName === playerName && series.unitLabel === 'Killed'
     );
-    if (!actual || !ideal || !missed || !killed || !ideal._uncappedValues) continue;
+    if (!actual || !ideal || !missed || !killed || !ideal._rawIdealValues) continue;
 
     const values = villagerEfficiencyValues(
-      ideal._uncappedValues,
+      ideal._rawIdealValues,
       actual.values,
       killed.values,
-      cap,
+      normalizedTarget,
     );
     ideal.values = values.idealValues;
     missed.values = values.missedValues;
@@ -499,8 +496,8 @@ export function applyVillagerEfficiencySoftCap(chart: Chart, softCap: number): v
       missedBand.toValues = values.missedUpperValues;
     }
   }
-  chart.options = { ...(chart.options || {}), villagerSoftCap: cap };
-  chart.meta = villagerEfficiencyMeta(cap);
+  chart.options = { ...(chart.options || {}), villagerTarget: normalizedTarget };
+  chart.meta = villagerEfficiencyMeta(normalizedTarget);
   delete chart._cachedPlotH;
   delete chart._cachedMarginTop;
   delete chart._cachedYMin;
@@ -579,7 +576,7 @@ export function buildVillagerEfficiencyCharts(
       rawIdealValues,
       actualValues,
       killedValues,
-      DEFAULT_VILLAGER_SOFT_CAP,
+      DEFAULT_VILLAGER_TARGET,
     );
 
     const name = player.name || `Player ${playerIndex + 1}`;
@@ -607,7 +604,7 @@ export function buildVillagerEfficiencyCharts(
         color,
         baseColor: color,
         values: idealValues,
-        _uncappedValues: rawIdealValues,
+        _rawIdealValues: rawIdealValues,
         lineDash: [7, 5],
         team: player.team,
       },
@@ -660,11 +657,11 @@ export function buildVillagerEfficiencyCharts(
   return [{
     value: `${SUMMARY_PLUS_PREFIX}villager-efficiency`,
     title: 'Villager Efficiency',
-    meta: villagerEfficiencyMeta(DEFAULT_VILLAGER_SOFT_CAP),
+    meta: villagerEfficiencyMeta(DEFAULT_VILLAGER_TARGET),
     data: { labels, series },
     bands,
     type: 'villager-efficiency',
-    options: { height: 280, villagerSoftCap: DEFAULT_VILLAGER_SOFT_CAP },
+    options: { height: 280, villagerTarget: DEFAULT_VILLAGER_TARGET },
     nativePlayerOrder,
   }];
 }

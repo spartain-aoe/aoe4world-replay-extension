@@ -2,12 +2,14 @@ import { drawTimelineCanvasChart } from './canvas-render.ts';
 import { recomputeVisibleGeometry } from './interactions.ts';
 import type { Chart, TimelineElements } from './types.ts';
 
-const CONTROL_CLASS = 'aoe4-villager-cap-control';
-const STORAGE_KEY = 'aoe4plus.villagerSoftCap';
-const CROP_STORAGE_KEY = 'aoe4plus.villagerCropToSoftCap';
-const DEFAULT_SOFT_CAP = 120;
+const CONTROL_CLASS = 'aoe4-villager-target-control';
+const STORAGE_KEY = 'aoe4plus.villagerTarget';
+const LEGACY_STORAGE_KEY = 'aoe4plus.villagerSoftCap';
+const CROP_STORAGE_KEY = 'aoe4plus.villagerCropToTarget';
+const LEGACY_CROP_STORAGE_KEY = 'aoe4plus.villagerCropToSoftCap';
+const DEFAULT_TARGET = 120;
 
-type ApplyVillagerSoftCap = (chart: Chart, softCap: number) => void;
+type ApplyVillagerTarget = (chart: Chart, target: number) => void;
 
 function safeGetStorage(): Storage | null {
   try {
@@ -17,30 +19,46 @@ function safeGetStorage(): Storage | null {
   }
 }
 
-function normalizeSoftCap(value: number): number {
-  return Number.isFinite(value) ? Math.max(1, Math.round(value)) : DEFAULT_SOFT_CAP;
+function normalizeTarget(value: number): number {
+  return Number.isFinite(value) ? Math.max(1, Math.round(value)) : DEFAULT_TARGET;
 }
 
-export function getActiveVillagerSoftCap(): number {
-  const raw = safeGetStorage()?.getItem(STORAGE_KEY);
-  return normalizeSoftCap(Number(raw ?? DEFAULT_SOFT_CAP));
-}
-
-export function setActiveVillagerSoftCap(value: number): number {
-  const cap = normalizeSoftCap(value);
+function migratedStorageValue(key: string, legacyKey: string): string | null {
+  const storage = safeGetStorage();
+  if (!storage) return null;
+  const current = storage.getItem(key);
+  if (current != null) return current;
+  const legacy = storage.getItem(legacyKey);
+  if (legacy == null) return null;
   try {
-    safeGetStorage()?.setItem(STORAGE_KEY, String(cap));
+    storage.setItem(key, legacy);
+    storage.removeItem(legacyKey);
   } catch {
     // ignored
   }
-  return cap;
+  return legacy;
 }
 
-export function getActiveVillagerCropToSoftCap(): boolean {
-  return safeGetStorage()?.getItem(CROP_STORAGE_KEY) === 'true';
+export function getActiveVillagerTarget(): number {
+  const raw = migratedStorageValue(STORAGE_KEY, LEGACY_STORAGE_KEY);
+  return normalizeTarget(Number(raw ?? DEFAULT_TARGET));
 }
 
-export function setActiveVillagerCropToSoftCap(value: boolean): boolean {
+export function setActiveVillagerTarget(value: number): number {
+  const target = normalizeTarget(value);
+  try {
+    safeGetStorage()?.setItem(STORAGE_KEY, String(target));
+  } catch {
+    // ignored
+  }
+  return target;
+}
+
+export function getActiveVillagerCropToTarget(): boolean {
+  return migratedStorageValue(CROP_STORAGE_KEY, LEGACY_CROP_STORAGE_KEY) === 'true';
+}
+
+export function setActiveVillagerCropToTarget(value: boolean): boolean {
   const crop = value === true;
   try {
     safeGetStorage()?.setItem(CROP_STORAGE_KEY, String(crop));
@@ -65,57 +83,57 @@ function cropIcon(): SVGSVGElement {
   return svg;
 }
 
-export function detachVillagerSoftCapControl(timeline: TimelineElements): void {
-  const existing = timeline.__aoe4VillagerCapControl;
+export function detachVillagerTargetControl(timeline: TimelineElements): void {
+  const existing = timeline.__aoe4VillagerTargetControl;
   if (existing?.parentElement) existing.parentElement.removeChild(existing);
-  timeline.__aoe4VillagerCapControl = null;
+  timeline.__aoe4VillagerTargetControl = null;
   const orphans = timeline.chartBox?.querySelectorAll(`.${CONTROL_CLASS}`);
   if (orphans) {
     for (const node of orphans) node.parentElement?.removeChild(node);
   }
 }
 
-export function renderVillagerSoftCapControl(
+export function renderVillagerTargetControl(
   timeline: TimelineElements,
   chart: Chart,
-  applySoftCap: ApplyVillagerSoftCap,
+  applyTarget: ApplyVillagerTarget,
 ): void {
-  detachVillagerSoftCapControl(timeline);
+  detachVillagerTargetControl(timeline);
   if (chart.type !== 'villager-efficiency') return;
   const chartBox = timeline.chartBox;
   if (!chartBox) return;
 
-  const initialCap = getActiveVillagerSoftCap();
-  const initialCrop = getActiveVillagerCropToSoftCap();
+  const initialTarget = getActiveVillagerTarget();
+  const initialCrop = getActiveVillagerCropToTarget();
   chart.options = {
     ...(chart.options || {}),
-    villagerCropToSoftCap: initialCrop,
+    villagerCropToTarget: initialCrop,
   };
-  applySoftCap(chart, initialCap);
+  applyTarget(chart, initialTarget);
   recomputeVisibleGeometry(chart);
 
   const container = document.createElement('div');
   container.className = CONTROL_CLASS;
 
   const label = document.createElement('label');
-  label.textContent = 'Soft cap';
-  label.title = 'Stop counting missed production after the ideal reaches this villager count';
+  label.textContent = 'Target';
+  label.title = 'Count missed production while actual plus counted missed villagers is below this target';
 
   const input = document.createElement('input');
   input.type = 'number';
   input.className = `${CONTROL_CLASS}-input`;
   input.min = '1';
   input.step = '1';
-  input.value = String(initialCap);
-  input.setAttribute('aria-label', 'Villager ideal soft cap');
+  input.value = String(initialTarget);
+  input.setAttribute('aria-label', 'Villager production target');
   label.appendChild(input);
   container.appendChild(label);
 
   const cropButton = document.createElement('button');
   cropButton.type = 'button';
   cropButton.className = `${CONTROL_CLASS}-crop`;
-  cropButton.title = 'Crop chart vertically at the villager soft cap';
-  cropButton.setAttribute('aria-label', 'Crop chart to villager soft cap');
+  cropButton.title = 'Crop chart vertically at the villager target';
+  cropButton.setAttribute('aria-label', 'Crop chart to villager target');
   cropButton.setAttribute('aria-pressed', String(initialCrop));
   cropButton.appendChild(cropIcon());
   container.appendChild(cropButton);
@@ -124,19 +142,19 @@ export function renderVillagerSoftCapControl(
   if (!computedPos || computedPos === 'static') chartBox.style.position = 'relative';
 
   const commit = (): void => {
-    const cap = setActiveVillagerSoftCap(Number(input.value));
-    input.value = String(cap);
-    applySoftCap(chart, cap);
+    const target = setActiveVillagerTarget(Number(input.value));
+    input.value = String(target);
+    applyTarget(chart, target);
     recomputeVisibleGeometry(chart);
     drawTimelineCanvasChart(timeline.canvas, chart);
   };
   const toggleCrop = (): void => {
-    const crop = setActiveVillagerCropToSoftCap(
-      chart.options?.villagerCropToSoftCap !== true,
+    const crop = setActiveVillagerCropToTarget(
+      chart.options?.villagerCropToTarget !== true,
     );
     chart.options = {
       ...(chart.options || {}),
-      villagerCropToSoftCap: crop,
+      villagerCropToTarget: crop,
     };
     cropButton.setAttribute('aria-pressed', String(crop));
     recomputeVisibleGeometry(chart);
@@ -152,5 +170,5 @@ export function renderVillagerSoftCapControl(
   cropButton.addEventListener('click', toggleCrop);
 
   chartBox.appendChild(container);
-  timeline.__aoe4VillagerCapControl = container;
+  timeline.__aoe4VillagerTargetControl = container;
 }

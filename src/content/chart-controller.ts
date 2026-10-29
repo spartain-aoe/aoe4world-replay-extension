@@ -39,9 +39,9 @@ import {
 } from './legend.ts';
 import { renderArmyModeToggle, detachArmyModeToggle } from './army-mode.ts';
 import {
-  detachVillagerSoftCapControl,
-  renderVillagerSoftCapControl,
-} from './villager-cap.ts';
+  detachVillagerTargetControl,
+  renderVillagerTargetControl,
+} from './villager-target.ts';
 import { clearRangeState, syncRangeUi } from './range.ts';
 import { attachCanvasTooltip, detachCanvasTooltip } from './tooltip.ts';
 import {
@@ -60,7 +60,7 @@ import type {
 } from './types.ts';
 
 type CombatMetricsApi = {
-  applyVillagerEfficiencySoftCap(chart: Chart, softCap: number): void;
+  applyVillagerEfficiencyTarget(chart: Chart, target: number): void;
   buildVillagerEfficiencyCharts(
     summary: GameSummary,
     nativeColors: Map<string, string>,
@@ -662,19 +662,19 @@ function renderTimelineMetric(timeline: TimelineElements, chart: Chart): void {
   if (chart.type === 'army') {
     renderArmyUnitLegend(timeline, chart);
     renderArmyModeToggle(timeline, chart);
-    detachVillagerSoftCapControl(timeline);
+    detachVillagerTargetControl(timeline);
   } else if (chart.type === 'villager-efficiency') {
     removeArmyUnitLegend(timeline);
     detachArmyModeToggle(timeline);
-    renderVillagerSoftCapControl(
+    renderVillagerTargetControl(
       timeline,
       chart,
-      combatMetrics.applyVillagerEfficiencySoftCap,
+      combatMetrics.applyVillagerEfficiencyTarget,
     );
   } else {
     removeArmyUnitLegend(timeline);
     detachArmyModeToggle(timeline);
-    detachVillagerSoftCapControl(timeline);
+    detachVillagerTargetControl(timeline);
   }
   animateTimelineCanvasChart(canvas, chart);
   attachTimelineHoverGuard(timeline, chart);

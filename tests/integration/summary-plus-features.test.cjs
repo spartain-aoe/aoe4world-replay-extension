@@ -720,9 +720,9 @@ async function installNumudanRoutesWithDelayedPbgidMap(delayMs = 2500) {
         ['Actual', 'Ideal', 'Missed production', 'Killed'].every(label => text.includes(label));
     }, null, { timeout: 10000 });
 
-    const capState = await page.evaluate(() => {
-      const input = document.querySelector('.aoe4-villager-cap-control-input');
-      const crop = document.querySelector('.aoe4-villager-cap-control-crop');
+    const targetState = await page.evaluate(() => {
+      const input = document.querySelector('.aoe4-villager-target-control-input');
+      const crop = document.querySelector('.aoe4-villager-target-control-crop');
       if (!input || !crop) return null;
       const initial = input.value;
       input.value = '135';
@@ -732,28 +732,28 @@ async function installNumudanRoutesWithDelayedPbgidMap(delayMs = 2500) {
       const result = {
         initial,
         edited: input.value,
-        stored: localStorage.getItem('aoe4plus.villagerSoftCap'),
+        stored: localStorage.getItem('aoe4plus.villagerTarget'),
         cropText: (crop.textContent || '').trim(),
         cropHasIcon: !!crop.querySelector('svg'),
         cropLabel: crop.getAttribute('aria-label'),
         cropPressed: crop.getAttribute('aria-pressed'),
-        cropStored: localStorage.getItem('aoe4plus.villagerCropToSoftCap'),
+        cropStored: localStorage.getItem('aoe4plus.villagerCropToTarget'),
       };
       crop.click();
       input.value = '120';
       input.dispatchEvent(new Event('change', { bubbles: true }));
       return result;
     });
-    assert(capState, 'Villager soft-cap editor not found');
-    assert(capState.initial === '120', `unexpected default villager soft cap: ${JSON.stringify(capState)}`);
-    assert(capState.edited === '135', `villager soft-cap input did not retain edit: ${JSON.stringify(capState)}`);
-    assert(capState.stored === '135', `villager soft-cap edit was not applied: ${JSON.stringify(capState)}`);
-    assert(capState.cropText === '' && capState.cropHasIcon,
-      `villager crop control should be icon-only: ${JSON.stringify(capState)}`);
-    assert(capState.cropLabel === 'Crop chart to villager soft cap',
-      `villager crop control should have an accessible label: ${JSON.stringify(capState)}`);
-    assert(capState.cropPressed === 'true' && capState.cropStored === 'true',
-      `villager crop control did not persist its active state: ${JSON.stringify(capState)}`);
+    assert(targetState, 'Villager target editor not found');
+    assert(targetState.initial === '120', `unexpected default villager target: ${JSON.stringify(targetState)}`);
+    assert(targetState.edited === '135', `villager target input did not retain edit: ${JSON.stringify(targetState)}`);
+    assert(targetState.stored === '135', `villager target edit was not applied: ${JSON.stringify(targetState)}`);
+    assert(targetState.cropText === '' && targetState.cropHasIcon,
+      `villager crop control should be icon-only: ${JSON.stringify(targetState)}`);
+    assert(targetState.cropLabel === 'Crop chart to villager target',
+      `villager crop control should have an accessible label: ${JSON.stringify(targetState)}`);
+    assert(targetState.cropPressed === 'true' && targetState.cropStored === 'true',
+      `villager crop control did not persist its active state: ${JSON.stringify(targetState)}`);
   });
 
   await test('Army Value mode has Count/Value labels and non-zero value data for override-only PBGIDs', async () => {
