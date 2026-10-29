@@ -5,6 +5,7 @@ import { parseHTML } from 'linkedom';
 import {
   attachPlayerToggle,
   detachPlayerToggle,
+  recomputeVisibleGeometry,
 } from '../../src/content/interactions.ts';
 
 function installDom() {
@@ -114,6 +115,26 @@ describe('Villager Efficiency player radios', () => {
 
     bravoRow.querySelector('.font-bold').click();
     assert.deepEqual(visiblePlayers(chart), ['Bravo'], 'selected radio cannot be toggled off');
+  });
+
+  test('includes bottom-stacked debt bands in the uncropped y-axis', () => {
+    const chart = makeChart();
+    chart.options.villagerTarget = 8;
+    chart.bands = [{
+      key: 'Alpha:debt',
+      label: 'Missed production',
+      playerName: 'Alpha',
+      color: '#F59E0B',
+      fromValues: [0, 4],
+      toValues: [0, 12],
+    }];
+
+    recomputeVisibleGeometry(chart);
+    assert.ok(chart._geometry.yMax >= 12);
+
+    chart.options.villagerCropToTarget = true;
+    recomputeVisibleGeometry(chart);
+    assert.equal(chart._geometry.yMax, 8);
   });
 
   test('previews the hovered player without changing the selected radio', () => {

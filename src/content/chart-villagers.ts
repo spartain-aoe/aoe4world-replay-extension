@@ -373,7 +373,7 @@ function villagerEfficiencyValues(
       cumulativeMissed += newMissedOpportunity;
     }
     maximumObservedShortfall = Math.max(maximumObservedShortfall, observedShortfall);
-    const killedUpper = actualValues[index] + killedValues[index];
+    const killedUpper = killedValues[index];
     killedUpperValues.push(killedUpper);
     missedUpperValues.push(killedUpper + cumulativeMissed);
     missedValues.push(cumulativeMissed);
@@ -385,7 +385,7 @@ function villagerEfficiencyMeta(target: number, adjustIdealForDeaths: boolean): 
   const idealBehavior = adjustIdealForDeaths
     ? 'The dashed ideal plateaus at the target, drops with villager deaths, and recovers with later ideal production opportunities.'
     : 'The dashed ideal plateaus at the target.';
-  return `Actual living villagers versus uninterrupted production from every available producer. ${idealBehavior} Missed production accrues for unmatched production opportunities while actual living villagers are below the ${normalizeTarget(target)} target, pauses at or above it, and resumes if losses pull actual below target. Losses reopen accrual but do not count as missed production. Red shading is villagers killed; amber shading is counted missed production.`;
+  return `Actual living villagers versus uninterrupted production from every available producer. ${idealBehavior} Missed production accrues for unmatched production opportunities while actual living villagers are below the ${normalizeTarget(target)} target, pauses at or above it, and resumes if losses pull actual below target. Losses reopen accrual but do not count as missed production. Bottom-stacked red shading is villagers killed; amber shading above it is counted missed production.`;
 }
 
 function sameTime(a: number, b: number): boolean {
@@ -526,7 +526,7 @@ export function applyVillagerEfficiencyTarget(chart: Chart, target: number): voi
       band.playerName === playerName && band.label === 'Killed'
     );
     if (killedBand) {
-      killedBand.fromValues = actual.values;
+      killedBand.fromValues = new Array(killed.values.length).fill(0);
       killedBand.toValues = values.killedUpperValues;
     }
     const missedBand = chart.bands?.find(band =>
@@ -679,7 +679,7 @@ export function buildVillagerEfficiencyCharts(
         label: 'Killed',
         playerName: name,
         color: KILLED_COLOR,
-        fromValues: actualValues,
+        fromValues: new Array(labels.length).fill(0),
         toValues: killedUpperValues,
         opacity: 0.18,
       },

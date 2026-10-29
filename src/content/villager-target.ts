@@ -69,10 +69,6 @@ export function getActiveVillagerCropToTarget(): boolean {
   return migratedStorageValue(CROP_STORAGE_KEY, LEGACY_CROP_STORAGE_KEY) === 'true';
 }
 
-export function setActiveVillagerCropToTarget(value: boolean): boolean {
-  return setStoredBoolean(CROP_STORAGE_KEY, value);
-}
-
 export function detachVillagerTargetControl(timeline: TimelineElements): void {
   const existing = timeline.__aoe4VillagerTargetControl;
   if (existing?.parentElement) existing.parentElement.removeChild(existing);
@@ -129,7 +125,8 @@ export function renderVillagerTargetControl(
     drawTimelineCanvasChart(timeline.canvas, chart);
   };
   const toggleCrop = (): void => {
-    const crop = setActiveVillagerCropToTarget(
+    const crop = setStoredBoolean(
+      CROP_STORAGE_KEY,
       chart.options?.villagerCropToTarget !== true,
     );
     chart.options = {

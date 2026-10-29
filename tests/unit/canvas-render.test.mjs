@@ -173,16 +173,16 @@ describe('drawTimelineCanvasChart', () => {
         label: 'Killed',
         playerName: 'Alpha',
         color: '#EF4444',
-        fromValues: [6, 7, 7],
-        toValues: [6, 7, 8],
+        fromValues: [0, 0, 0],
+        toValues: [0, 0, 1],
       },
       {
         key: 'alpha:missed-band',
         label: 'Missed production',
         playerName: 'Alpha',
         color: '#F59E0B',
-        fromValues: [6, 7, 8],
-        toValues: [6, 7, 9],
+        fromValues: [0, 0, 1],
+        toValues: [0, 0, 2],
       },
     ];
 

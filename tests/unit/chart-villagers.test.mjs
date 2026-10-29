@@ -123,13 +123,13 @@ test('buildVillagerEfficiencyCharts separates missed production from villagers k
   })), [
     {
       label: 'Killed',
-      from: [6, 6, 7, 7, 7, 8, 7],
-      to: [6, 6, 7, 7, 7, 8, 8],
+      from: [0, 0, 0, 0, 0, 0, 0],
+      to: [0, 0, 0, 0, 0, 0, 1],
     },
     {
       label: 'Missed production',
-      from: [6, 6, 7, 7, 7, 8, 8],
-      to: [6, 6, 7, 7, 8, 9, 9],
+      from: [0, 0, 0, 0, 0, 0, 1],
+      to: [0, 0, 0, 0, 1, 1, 2],
     },
   ]);
 });
@@ -392,14 +392,23 @@ test('ideal plateaus at the target without changing missed production', () => {
   assert.equal(series(chart, 'At Target', 'Missed production').values.at(-1), 0);
   assert.equal(
     chart.bands.find(band => band.playerName === 'At Target' && band.label === 'Missed production').toValues.at(-1),
-    120,
-    'amber missed-production shading stops at the target',
+    0,
+    'bottom-stacked missed-production shading is empty when nothing was missed',
   );
 
   applyVillagerEfficiencyTarget(chart, 140);
   assert.equal(series(chart, 'At Target', 'Ideal').values.at(-1), 140);
   assert.equal(series(chart, 'Over Target', 'Ideal').values.at(-1), 140);
   assert.equal(series(chart, 'At Target', 'Missed production').values.at(-1), 36);
+  assert.equal(
+    chart.bands.find(band => band.playerName === 'At Target' && band.label === 'Missed production').fromValues.at(-1),
+    0,
+  );
+  assert.equal(
+    chart.bands.find(band => band.playerName === 'At Target' && band.label === 'Missed production').toValues.at(-1),
+    36,
+    'target reapplication keeps missed-production shading stacked from the bottom',
+  );
 
   applyVillagerEfficiencyTarget(chart, 100);
   assert.equal(series(chart, 'At Target', 'Ideal').values.at(-1), 100);

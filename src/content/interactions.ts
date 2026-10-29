@@ -289,15 +289,22 @@ export function detachPlayerToggle(timeline: TimelineElements): void {
 
 export function recomputeVisibleGeometry(chart: Chart): void {
   if (chart.type === 'army') precomputeStackedValues(chart.data.series);
+  const allSeries = chart.data.series;
   let yMin = 0;
   let yMax = 1;
-  for (const series of chart.data.series) {
+  for (const series of allSeries) {
     if (series._hidden || series.render === 'metric') continue;
     const vals = (chart.type === 'army' && series._stackTop) ? series._stackTop : series.values;
     for (const value of vals) {
       if (value < yMin) yMin = value;
       if (value > yMax) yMax = value;
     }
+  }
+  for (const band of chart.bands || []) {
+    if (!allSeries.some(series =>
+      series.playerName === band.playerName && !series._hidden
+    )) continue;
+    for (const value of band.toValues) if (value > yMax) yMax = value;
   }
   const villagerTarget = chart.type === 'villager-efficiency'
     ? Number(chart.options?.villagerTarget)
@@ -313,7 +320,6 @@ export function recomputeVisibleGeometry(chart: Chart): void {
     chart._geometry = niceGeometryForChart(chart.type, yMin, yMax);
   }
 
-  const allSeries = chart.data.series;
   const numSamples = chart.data.labels.length;
   const tooltipRows: TooltipCacheRow[][] = new Array(numSamples);
   for (let i = 0; i < numSamples; i++) {
