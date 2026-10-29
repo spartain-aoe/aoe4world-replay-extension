@@ -325,17 +325,19 @@ function villagerEfficiencyValues(
   const missedUpperValues: number[] = [];
   const missedValues: number[] = [];
   let cumulativeMissed = 0;
-  let previousObservedShortfall = 0;
+  let maximumObservedShortfall = 0;
 
   for (let index = 0; index < rawIdealValues.length; index++) {
     const produced = actualValues[index] + killedValues[index];
     const observedShortfall = Math.max(0, rawIdealValues[index] - produced);
-    const newMissedOpportunity = Math.max(0, observedShortfall - previousObservedShortfall);
+    // Ideal and actual completions can land in different samples; only a new
+    // shortfall high-water mark represents another missed production slot.
+    const newMissedOpportunity = Math.max(0, observedShortfall - maximumObservedShortfall);
     const targetHeadroom = Math.max(0, normalizedTarget - (actualValues[index] + cumulativeMissed));
     if (newMissedOpportunity > 0 && targetHeadroom > 0) {
       cumulativeMissed += Math.min(newMissedOpportunity, targetHeadroom);
     }
-    previousObservedShortfall = observedShortfall;
+    maximumObservedShortfall = Math.max(maximumObservedShortfall, observedShortfall);
     const killedUpper = actualValues[index] + killedValues[index];
     killedUpperValues.push(killedUpper);
     missedUpperValues.push(killedUpper + cumulativeMissed);

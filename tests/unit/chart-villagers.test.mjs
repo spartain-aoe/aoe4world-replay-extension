@@ -112,7 +112,7 @@ test('buildVillagerEfficiencyCharts separates missed production from villagers k
   assert.deepEqual(chart.data.labels, [0, 10, 20, 30, 40, 50, 60]);
   assert.deepEqual(series(chart, 'Alpha', 'Actual').values, [6, 6, 7, 7, 7, 8, 7]);
   assert.deepEqual(series(chart, 'Alpha', 'Ideal').values, [6, 6, 7, 7, 8, 8, 9]);
-  assert.deepEqual(series(chart, 'Alpha', 'Missed production').values, [0, 0, 0, 0, 1, 1, 2]);
+  assert.deepEqual(series(chart, 'Alpha', 'Missed production').values, [0, 0, 0, 0, 1, 1, 1]);
   assert.deepEqual(series(chart, 'Alpha', 'Killed').values, [0, 0, 0, 0, 0, 0, 1]);
 
   const alphaBands = chart.bands.filter(band => band.playerName === 'Alpha');
@@ -129,9 +129,27 @@ test('buildVillagerEfficiencyCharts separates missed production from villagers k
     {
       label: 'Missed production',
       from: [6, 6, 7, 7, 7, 8, 8],
-      to: [6, 6, 7, 7, 8, 9, 10],
+      to: [6, 6, 7, 7, 8, 9, 9],
     },
   ]);
+});
+
+test('missed production does not recount a deficit after a later villager completion', () => {
+  const summary = {
+    duration: 60,
+    players: [
+      player({
+        finished: [0, 0, 0, 0, 0, 0, 50],
+      }),
+    ],
+  };
+
+  const [chart] = buildVillagerEfficiencyCharts(summary, new Map());
+
+  assert.deepEqual(
+    series(chart, 'Alpha', 'Missed production').values,
+    [0, 0, 1, 1, 2, 2, 2],
+  );
 });
 
 test('ideal production includes every available producer with its own speed', () => {
