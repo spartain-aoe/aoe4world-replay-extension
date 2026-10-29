@@ -194,6 +194,7 @@ export interface Chart {
     armyMode?: 'count' | 'value';
     villagerTarget?: number;
     villagerCropToTarget?: boolean;
+    villagerAdjustIdealForDeaths?: boolean;
     [key: string]: unknown;
   };
   data: ChartData;

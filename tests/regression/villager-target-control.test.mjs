@@ -159,6 +159,39 @@ describe('villager target control', () => {
     assert.ok(chart._geometry.yMax > 120);
   });
 
+  test('uses an icon button to persistently shift ideal with villager deaths', () => {
+    const chart = makeChart();
+    const timeline = makeTimeline(document);
+    const applied = [];
+
+    renderVillagerTargetControl(timeline, chart, (targetChart, target) => {
+      targetChart.options.villagerTarget = target;
+      applied.push({
+        target,
+        adjust: targetChart.options.villagerAdjustIdealForDeaths === true,
+      });
+    });
+
+    const adjustButton = timeline.chartBox.querySelector('.aoe4-villager-target-control-deaths');
+    assert.ok(adjustButton);
+    assert.equal(adjustButton.textContent.trim(), '');
+    assert.equal(adjustButton.getAttribute('aria-label'), 'Shift ideal for villager deaths');
+    assert.equal(adjustButton.getAttribute('aria-pressed'), 'false');
+
+    adjustButton.click();
+
+    assert.equal(adjustButton.getAttribute('aria-pressed'), 'true');
+    assert.equal(localStorage.getItem('aoe4plus.villagerAdjustIdealForDeaths'), 'true');
+    assert.equal(chart.options.villagerAdjustIdealForDeaths, true);
+    assert.deepEqual(applied.at(-1), { target: 120, adjust: true });
+
+    adjustButton.click();
+
+    assert.equal(adjustButton.getAttribute('aria-pressed'), 'false');
+    assert.equal(localStorage.getItem('aoe4plus.villagerAdjustIdealForDeaths'), 'false');
+    assert.equal(chart.options.villagerAdjustIdealForDeaths, false);
+  });
+
   test('re-rendering replaces the control and detach removes it', () => {
     const chart = makeChart();
     const timeline = makeTimeline(document);

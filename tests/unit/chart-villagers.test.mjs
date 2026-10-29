@@ -366,7 +366,7 @@ test('Japanese ideal production infers a Town Center Yorishiro from sustained lo
   );
 });
 
-test('target stops missed debt without flattening uninterrupted ideal production', () => {
+test('ideal plateaus at the target without changing missed production', () => {
   const continuousToTarget = [
     0, 0, 0, 0, 0, 0,
     ...Array.from({ length: 114 }, (_, index) => (index + 1) * 20),
@@ -385,8 +385,10 @@ test('target stops missed debt without flattening uninterrupted ideal production
 
   const [chart] = buildVillagerEfficiencyCharts(summary, new Map());
 
-  assert.equal(series(chart, 'At Target', 'Ideal').values.at(-1), 156);
-  assert.equal(series(chart, 'Over Target', 'Ideal').values.at(-1), 275);
+  assert.equal(series(chart, 'At Target', 'Ideal').values.at(-1), 120);
+  assert.equal(series(chart, 'Over Target', 'Ideal').values.at(-1), 120);
+  assert.equal(series(chart, 'At Target', 'Ideal')._rawIdealValues.at(-1), 156);
+  assert.equal(series(chart, 'Over Target', 'Ideal')._rawIdealValues.at(-1), 275);
   assert.equal(series(chart, 'At Target', 'Missed production').values.at(-1), 0);
   assert.equal(
     chart.bands.find(band => band.playerName === 'At Target' && band.label === 'Missed production').toValues.at(-1),
@@ -395,14 +397,14 @@ test('target stops missed debt without flattening uninterrupted ideal production
   );
 
   applyVillagerEfficiencyTarget(chart, 140);
-  assert.equal(series(chart, 'At Target', 'Ideal').values.at(-1), 156);
-  assert.equal(series(chart, 'Over Target', 'Ideal').values.at(-1), 275);
+  assert.equal(series(chart, 'At Target', 'Ideal').values.at(-1), 140);
+  assert.equal(series(chart, 'Over Target', 'Ideal').values.at(-1), 140);
   assert.equal(series(chart, 'At Target', 'Missed production').values.at(-1), 36);
 
   applyVillagerEfficiencyTarget(chart, 100);
-  assert.equal(series(chart, 'At Target', 'Ideal').values.at(-1), 156);
+  assert.equal(series(chart, 'At Target', 'Ideal').values.at(-1), 100);
   assert.equal(series(chart, 'At Target', 'Missed production').values.at(-1), 0);
-  assert.equal(series(chart, 'Over Target', 'Ideal').values.at(-1), 275);
+  assert.equal(series(chart, 'Over Target', 'Ideal').values.at(-1), 100);
 });
 
 test('missed production never decreases and stops accumulating at the target', () => {
@@ -423,7 +425,7 @@ test('missed production never decreases and stops accumulating at the target', (
 
   assert.deepEqual(missed, [0, 0, 1, 1, 1, 1, 1, 1, 1]);
   assert.equal(ideal[chart.data.labels.indexOf(40)], 8, 'uninterrupted production reaches the target');
-  assert.equal(ideal.at(-1), 10, 'uninterrupted ideal keeps rising after missed debt freezes');
+  assert.equal(ideal.at(-1), 8, 'displayed ideal plateaus at the target');
 });
 
 test('missed production keeps accruing while actual remains below the target', () => {
@@ -466,6 +468,41 @@ test('villager losses reopen target accrual without counting as missed productio
   assert.equal(at(80), 1, 'new idle time is ignored while actual living is at target');
   assert.equal(at(90), 1, 'villager losses reopen accrual but do not increment missed production');
   assert.equal(at(100), 2, 'the next unmatched ideal completion increments while actual is below target');
+});
+
+test('death-adjusted ideal drops on losses and recovers on later ideal completions', () => {
+  const summary = {
+    duration: 100,
+    players: [
+      player({
+        finished: [0, 0, 0, 0, 0, 0, 20, 40],
+        destroyed: [90],
+      }),
+    ],
+  };
+
+  const [chart] = buildVillagerEfficiencyCharts(summary, new Map());
+  applyVillagerEfficiencyTarget(chart, 8);
+
+  const ideal = series(chart, 'Alpha', 'Ideal');
+  const missedBefore = [...series(chart, 'Alpha', 'Missed production').values];
+  const at = seconds => ideal.values[chart.data.labels.indexOf(seconds)];
+
+  assert.equal(at(80), 8);
+  assert.equal(at(90), 8, 'default ideal remains plateaued at target after a death');
+  assert.equal(at(100), 8);
+
+  chart.options.villagerAdjustIdealForDeaths = true;
+  applyVillagerEfficiencyTarget(chart, 8);
+
+  assert.equal(at(80), 8);
+  assert.equal(at(90), 7, 'death-adjusted ideal drops when a villager is killed');
+  assert.equal(at(100), 8, 'the next ideal completion recovers toward target');
+  assert.deepEqual(
+    series(chart, 'Alpha', 'Missed production').values,
+    missedBefore,
+    'display mode must not change missed-production accounting',
+  );
 });
 
 test('Jin ideal production uses mounted villagers up to 20/23/26 caps, then regular villagers', () => {

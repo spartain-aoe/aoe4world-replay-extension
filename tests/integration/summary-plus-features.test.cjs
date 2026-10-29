@@ -723,12 +723,15 @@ async function installNumudanRoutesWithDelayedPbgidMap(delayMs = 2500) {
     const targetState = await page.evaluate(() => {
       const input = document.querySelector('.aoe4-villager-target-control-input');
       const crop = document.querySelector('.aoe4-villager-target-control-crop');
-      if (!input || !crop) return null;
+      const deaths = document.querySelector('.aoe4-villager-target-control-deaths');
+      if (!input || !crop || !deaths) return null;
       const initial = input.value;
       input.value = '135';
       input.dispatchEvent(new Event('change', { bubbles: true }));
       if (crop.getAttribute('aria-pressed') === 'true') crop.click();
       crop.click();
+      if (deaths.getAttribute('aria-pressed') === 'true') deaths.click();
+      deaths.click();
       const result = {
         initial,
         edited: input.value,
@@ -738,8 +741,14 @@ async function installNumudanRoutesWithDelayedPbgidMap(delayMs = 2500) {
         cropLabel: crop.getAttribute('aria-label'),
         cropPressed: crop.getAttribute('aria-pressed'),
         cropStored: localStorage.getItem('aoe4plus.villagerCropToTarget'),
+        deathsText: (deaths.textContent || '').trim(),
+        deathsHasIcon: !!deaths.querySelector('svg'),
+        deathsLabel: deaths.getAttribute('aria-label'),
+        deathsPressed: deaths.getAttribute('aria-pressed'),
+        deathsStored: localStorage.getItem('aoe4plus.villagerAdjustIdealForDeaths'),
       };
       crop.click();
+      deaths.click();
       input.value = '120';
       input.dispatchEvent(new Event('change', { bubbles: true }));
       return result;
@@ -754,6 +763,12 @@ async function installNumudanRoutesWithDelayedPbgidMap(delayMs = 2500) {
       `villager crop control should have an accessible label: ${JSON.stringify(targetState)}`);
     assert(targetState.cropPressed === 'true' && targetState.cropStored === 'true',
       `villager crop control did not persist its active state: ${JSON.stringify(targetState)}`);
+    assert(targetState.deathsText === '' && targetState.deathsHasIcon,
+      `villager death-adjust control should be icon-only: ${JSON.stringify(targetState)}`);
+    assert(targetState.deathsLabel === 'Shift ideal for villager deaths',
+      `villager death-adjust control should have an accessible label: ${JSON.stringify(targetState)}`);
+    assert(targetState.deathsPressed === 'true' && targetState.deathsStored === 'true',
+      `villager death-adjust control did not persist its active state: ${JSON.stringify(targetState)}`);
   });
 
   await test('Army Value mode has Count/Value labels and non-zero value data for override-only PBGIDs', async () => {

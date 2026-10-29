@@ -7,6 +7,7 @@ const STORAGE_KEY = 'aoe4plus.villagerTarget';
 const LEGACY_STORAGE_KEY = 'aoe4plus.villagerSoftCap';
 const CROP_STORAGE_KEY = 'aoe4plus.villagerCropToTarget';
 const LEGACY_CROP_STORAGE_KEY = 'aoe4plus.villagerCropToSoftCap';
+const ADJUST_IDEAL_STORAGE_KEY = 'aoe4plus.villagerAdjustIdealForDeaths';
 const DEFAULT_TARGET = 120;
 
 type ApplyVillagerTarget = (chart: Chart, target: number) => void;
@@ -54,33 +55,22 @@ export function setActiveVillagerTarget(value: number): number {
   return target;
 }
 
+function setStoredBoolean(key: string, value: boolean): boolean {
+  const active = value === true;
+  try {
+    safeGetStorage()?.setItem(key, String(active));
+  } catch {
+    // ignored
+  }
+  return active;
+}
+
 export function getActiveVillagerCropToTarget(): boolean {
   return migratedStorageValue(CROP_STORAGE_KEY, LEGACY_CROP_STORAGE_KEY) === 'true';
 }
 
 export function setActiveVillagerCropToTarget(value: boolean): boolean {
-  const crop = value === true;
-  try {
-    safeGetStorage()?.setItem(CROP_STORAGE_KEY, String(crop));
-  } catch {
-    // ignored
-  }
-  return crop;
-}
-
-function cropIcon(): SVGSVGElement {
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('viewBox', '0 0 24 24');
-  svg.setAttribute('aria-hidden', 'true');
-  svg.setAttribute('fill', 'none');
-  svg.setAttribute('stroke', 'currentColor');
-  svg.setAttribute('stroke-width', '2');
-  svg.setAttribute('stroke-linecap', 'round');
-  svg.setAttribute('stroke-linejoin', 'round');
-  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  path.setAttribute('d', 'M6 2v14a2 2 0 0 0 2 2h14M18 22V8a2 2 0 0 0-2-2H2');
-  svg.appendChild(path);
-  return svg;
+  return setStoredBoolean(CROP_STORAGE_KEY, value);
 }
 
 export function detachVillagerTargetControl(timeline: TimelineElements): void {
@@ -105,38 +95,28 @@ export function renderVillagerTargetControl(
 
   const initialTarget = getActiveVillagerTarget();
   const initialCrop = getActiveVillagerCropToTarget();
+  const initialAdjustIdealForDeaths =
+    safeGetStorage()?.getItem(ADJUST_IDEAL_STORAGE_KEY) === 'true';
   chart.options = {
     ...(chart.options || {}),
     villagerCropToTarget: initialCrop,
+    villagerAdjustIdealForDeaths: initialAdjustIdealForDeaths,
   };
   applyTarget(chart, initialTarget);
   recomputeVisibleGeometry(chart);
 
   const container = document.createElement('div');
   container.className = CONTROL_CLASS;
-
-  const label = document.createElement('label');
-  label.textContent = 'Target';
-  label.title = 'Count missed production while actual living villagers are below this target';
-
-  const input = document.createElement('input');
-  input.type = 'number';
-  input.className = `${CONTROL_CLASS}-input`;
-  input.min = '1';
-  input.step = '1';
+  container.innerHTML =
+    `<label>Target<input type="number" class="${CONTROL_CLASS}-input" min="1" step="1" aria-label="Villager production target"></label>` +
+    `<button type="button" class="${CONTROL_CLASS}-crop" title="Crop chart at villager target" aria-label="Crop chart to villager target"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2v14a2 2 0 0 0 2 2h14M18 22V8a2 2 0 0 0-2-2H2"/></svg></button>` +
+    `<button type="button" class="${CONTROL_CLASS}-deaths" title="Shift Ideal down on villager deaths" aria-label="Shift ideal for villager deaths"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h6v5h6v5h6"/></svg></button>`;
+  const input = container.querySelector('input') as HTMLInputElement;
+  const cropButton = container.querySelector(`.${CONTROL_CLASS}-crop`) as HTMLButtonElement;
+  const deathsButton = container.querySelector(`.${CONTROL_CLASS}-deaths`) as HTMLButtonElement;
   input.value = String(initialTarget);
-  input.setAttribute('aria-label', 'Villager production target');
-  label.appendChild(input);
-  container.appendChild(label);
-
-  const cropButton = document.createElement('button');
-  cropButton.type = 'button';
-  cropButton.className = `${CONTROL_CLASS}-crop`;
-  cropButton.title = 'Crop chart vertically at the villager target';
-  cropButton.setAttribute('aria-label', 'Crop chart to villager target');
   cropButton.setAttribute('aria-pressed', String(initialCrop));
-  cropButton.appendChild(cropIcon());
-  container.appendChild(cropButton);
+  deathsButton.setAttribute('aria-pressed', String(initialAdjustIdealForDeaths));
 
   const computedPos = (chartBox.style.position || '').trim();
   if (!computedPos || computedPos === 'static') chartBox.style.position = 'relative';
@@ -160,6 +140,20 @@ export function renderVillagerTargetControl(
     recomputeVisibleGeometry(chart);
     drawTimelineCanvasChart(timeline.canvas, chart);
   };
+  const toggleDeathAdjustment = (): void => {
+    const adjust = setStoredBoolean(
+      ADJUST_IDEAL_STORAGE_KEY,
+      chart.options?.villagerAdjustIdealForDeaths !== true,
+    );
+    chart.options = {
+      ...(chart.options || {}),
+      villagerAdjustIdealForDeaths: adjust,
+    };
+    deathsButton.setAttribute('aria-pressed', String(adjust));
+    applyTarget(chart, Number(input.value));
+    recomputeVisibleGeometry(chart);
+    drawTimelineCanvasChart(timeline.canvas, chart);
+  };
   input.addEventListener('change', commit);
   input.addEventListener('keydown', (event: KeyboardEvent) => {
     if (event.key !== 'Enter') return;
@@ -168,6 +162,7 @@ export function renderVillagerTargetControl(
     input.blur();
   });
   cropButton.addEventListener('click', toggleCrop);
+  deathsButton.addEventListener('click', toggleDeathAdjustment);
 
   chartBox.appendChild(container);
   timeline.__aoe4VillagerTargetControl = container;

@@ -308,11 +308,42 @@ function normalizeTarget(value: number): number {
   return Number.isFinite(value) ? Math.max(1, Math.round(value)) : DEFAULT_VILLAGER_TARGET;
 }
 
+function displayedIdealValues(
+  rawIdealValues: number[],
+  killedValues: number[],
+  target: number,
+  adjustForDeaths: boolean,
+): number[] {
+  const normalizedTarget = normalizeTarget(target);
+  if (!adjustForDeaths) {
+    return rawIdealValues.map(value => Math.min(value, normalizedTarget));
+  }
+
+  const values: number[] = [];
+  let previousRawIdeal = 0;
+  let previousKilled = 0;
+  let displayedIdeal = 0;
+  for (let index = 0; index < rawIdealValues.length; index++) {
+    const rawIdeal = Math.max(previousRawIdeal, rawIdealValues[index] || 0);
+    const killed = Math.max(previousKilled, killedValues[index] || 0);
+    displayedIdeal = Math.min(
+      normalizedTarget,
+      displayedIdeal + Math.max(0, rawIdeal - previousRawIdeal),
+    );
+    displayedIdeal = Math.max(0, displayedIdeal - Math.max(0, killed - previousKilled));
+    values.push(displayedIdeal);
+    previousRawIdeal = rawIdeal;
+    previousKilled = killed;
+  }
+  return values;
+}
+
 function villagerEfficiencyValues(
   rawIdealValues: number[],
   actualValues: number[],
   killedValues: number[],
   target: number,
+  adjustIdealForDeaths: boolean,
 ): {
   idealValues: number[];
   killedUpperValues: number[];
@@ -320,7 +351,12 @@ function villagerEfficiencyValues(
   missedValues: number[];
 } {
   const normalizedTarget = normalizeTarget(target);
-  const idealValues: number[] = [];
+  const idealValues = displayedIdealValues(
+    rawIdealValues,
+    killedValues,
+    normalizedTarget,
+    adjustIdealForDeaths,
+  );
   const killedUpperValues: number[] = [];
   const missedUpperValues: number[] = [];
   const missedValues: number[] = [];
@@ -341,13 +377,15 @@ function villagerEfficiencyValues(
     killedUpperValues.push(killedUpper);
     missedUpperValues.push(killedUpper + cumulativeMissed);
     missedValues.push(cumulativeMissed);
-    idealValues.push(rawIdealValues[index]);
   }
   return { idealValues, killedUpperValues, missedUpperValues, missedValues };
 }
 
-function villagerEfficiencyMeta(target: number): string {
-  return `Actual living villagers versus uninterrupted production from every available producer. The dashed ideal keeps rising while a producer remains available. Missed production accrues for unmatched production opportunities while actual living villagers are below the ${normalizeTarget(target)} target, pauses at or above it, and resumes if losses pull actual below target. Losses reopen accrual but do not count as missed production. Red shading is villagers killed; amber shading is counted missed production.`;
+function villagerEfficiencyMeta(target: number, adjustIdealForDeaths: boolean): string {
+  const idealBehavior = adjustIdealForDeaths
+    ? 'The dashed ideal plateaus at the target, drops with villager deaths, and recovers with later ideal production opportunities.'
+    : 'The dashed ideal plateaus at the target.';
+  return `Actual living villagers versus uninterrupted production from every available producer. ${idealBehavior} Missed production accrues for unmatched production opportunities while actual living villagers are below the ${normalizeTarget(target)} target, pauses at or above it, and resumes if losses pull actual below target. Losses reopen accrual but do not count as missed production. Red shading is villagers killed; amber shading is counted missed production.`;
 }
 
 function sameTime(a: number, b: number): boolean {
@@ -456,6 +494,7 @@ function simulateIdealCompletions(
 export function applyVillagerEfficiencyTarget(chart: Chart, target: number): void {
   if (chart.type !== 'villager-efficiency') return;
   const normalizedTarget = normalizeTarget(target);
+  const adjustIdealForDeaths = chart.options?.villagerAdjustIdealForDeaths === true;
   const playerNames = new Set(
     chart.data.series.map(series => series.playerName).filter((name): name is string => Boolean(name))
   );
@@ -479,6 +518,7 @@ export function applyVillagerEfficiencyTarget(chart: Chart, target: number): voi
       actual.values,
       killed.values,
       normalizedTarget,
+      adjustIdealForDeaths,
     );
     ideal.values = values.idealValues;
     missed.values = values.missedValues;
@@ -498,7 +538,7 @@ export function applyVillagerEfficiencyTarget(chart: Chart, target: number): voi
     }
   }
   chart.options = { ...(chart.options || {}), villagerTarget: normalizedTarget };
-  chart.meta = villagerEfficiencyMeta(normalizedTarget);
+  chart.meta = villagerEfficiencyMeta(normalizedTarget, adjustIdealForDeaths);
   delete chart._cachedPlotH;
   delete chart._cachedMarginTop;
   delete chart._cachedYMin;
@@ -578,6 +618,7 @@ export function buildVillagerEfficiencyCharts(
       actualValues,
       killedValues,
       DEFAULT_VILLAGER_TARGET,
+      false,
     );
 
     const name = player.name || `Player ${playerIndex + 1}`;
@@ -658,11 +699,15 @@ export function buildVillagerEfficiencyCharts(
   return [{
     value: `${SUMMARY_PLUS_PREFIX}villager-efficiency`,
     title: 'Villager Efficiency',
-    meta: villagerEfficiencyMeta(DEFAULT_VILLAGER_TARGET),
+    meta: villagerEfficiencyMeta(DEFAULT_VILLAGER_TARGET, false),
     data: { labels, series },
     bands,
     type: 'villager-efficiency',
-    options: { height: 280, villagerTarget: DEFAULT_VILLAGER_TARGET },
+    options: {
+      height: 280,
+      villagerTarget: DEFAULT_VILLAGER_TARGET,
+      villagerAdjustIdealForDeaths: false,
+    },
     nativePlayerOrder,
   }];
 }
