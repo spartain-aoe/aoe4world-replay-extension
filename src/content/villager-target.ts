@@ -117,7 +117,7 @@ export function renderVillagerTargetControl(
 
   const label = document.createElement('label');
   label.textContent = 'Target';
-  label.title = 'Count missed production while actual plus counted missed villagers is below this target';
+  label.title = 'Count missed production while actual living villagers are below this target';
 
   const input = document.createElement('input');
   input.type = 'number';

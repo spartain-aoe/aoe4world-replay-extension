@@ -330,12 +330,11 @@ function villagerEfficiencyValues(
   for (let index = 0; index < rawIdealValues.length; index++) {
     const produced = actualValues[index] + killedValues[index];
     const observedShortfall = Math.max(0, rawIdealValues[index] - produced);
-    // Ideal and actual completions can land in different samples; only a new
+    // Ideal and produced completions can land in different samples; only a new
     // shortfall high-water mark represents another missed production slot.
     const newMissedOpportunity = Math.max(0, observedShortfall - maximumObservedShortfall);
-    const targetHeadroom = Math.max(0, normalizedTarget - (actualValues[index] + cumulativeMissed));
-    if (newMissedOpportunity > 0 && targetHeadroom > 0) {
-      cumulativeMissed += Math.min(newMissedOpportunity, targetHeadroom);
+    if (newMissedOpportunity > 0 && actualValues[index] < normalizedTarget) {
+      cumulativeMissed += newMissedOpportunity;
     }
     maximumObservedShortfall = Math.max(maximumObservedShortfall, observedShortfall);
     const killedUpper = actualValues[index] + killedValues[index];
@@ -348,7 +347,7 @@ function villagerEfficiencyValues(
 }
 
 function villagerEfficiencyMeta(target: number): string {
-  return `Actual living villagers versus uninterrupted production from every available producer. The dashed ideal keeps rising while a producer remains available. Missed production accrues while actual plus counted missed villagers is below the ${normalizeTarget(target)} target, pauses at or above it, and resumes if losses pull that counterfactual living count below target. Red shading is villagers killed; amber shading is counted missed production.`;
+  return `Actual living villagers versus uninterrupted production from every available producer. The dashed ideal keeps rising while a producer remains available. Missed production accrues for unmatched production opportunities while actual living villagers are below the ${normalizeTarget(target)} target, pauses at or above it, and resumes if losses pull actual below target. Losses reopen accrual but do not count as missed production. Red shading is villagers killed; amber shading is counted missed production.`;
 }
 
 function sameTime(a: number, b: number): boolean {
