@@ -1,6 +1,7 @@
 /**
  * Integration coverage for the Summary+ features added on this branch:
- * - Idle TC details-table column fed from cached stats telemetry.
+ * - Idle TC and K/D Cost details-table columns.
+ * - Villagers Killed / Lost timeline rendering.
  * - Summary+ chart option ordering.
  * - Army Count/Value toggle labels and Value-mode data for override-only PBGIDs.
  * - Range-selection legend deltas in Value mode are resource-weighted, not counts.
@@ -183,12 +184,12 @@ async function setup(options = {}) {
       host.innerHTML = `
         <table data-summary-plus-details-fixture>
           <thead>
-            <tr><th></th><th colspan="1">Score</th><th colspan="1">Resources Spent</th><th colspan="1">Max. Workers</th><th colspan="1">Misc</th><th colspan="1">Sacred Sites</th></tr>
-            <tr><th></th><th>Total</th><th>Food</th><th>Villagers</th><th>APM</th><th>Capt.</th></tr>
+            <tr><th></th><th colspan="1">Score</th><th colspan="1">Resources Spent</th><th colspan="1">Max. Workers</th><th colspan="4">Military</th><th colspan="1">Misc</th><th colspan="1">Sacred Sites</th></tr>
+            <tr><th></th><th>Total</th><th>Food</th><th>Villagers</th><th>Prod.</th><th>Kills</th><th>Deaths</th><th>K/D</th><th>APM</th><th>Capt.</th></tr>
           </thead>
           <tbody>
-            <tr><td><a href="/players/24574510-spartain">spartain</a></td><td>100</td><td>50</td><td>10</td><td>136</td><td>0</td></tr>
-            <tr><td><a href="/players/20653422-DonationDonation">DonationDonation</a></td><td>90</td><td>40</td><td>9</td><td>121</td><td>0</td></tr>
+            <tr><td><a href="/players/24574510-spartain">spartain</a></td><td>100</td><td>50</td><td>10</td><td>180</td><td>147</td><td>151</td><td>0.97</td><td>136</td><td>0</td></tr>
+            <tr><td><a href="/players/20653422-DonationDonation">DonationDonation</a></td><td>90</td><td>40</td><td>9</td><td>306</td><td>151</td><td>147</td><td>1.03</td><td>121</td><td>0</td></tr>
           </tbody>
         </table>`;
       document.body.appendChild(host);
@@ -578,7 +579,33 @@ async function installNumudanRoutesWithDelayedPbgidMap(delayMs = 2500) {
     assert(donation?.cells.includes('0:45'), `DonationDonation Idle TC not rendered as 0:45: ${JSON.stringify(donation)}`);
   });
 
-  await test('Summary+ chart options are first and ordered Army → AVL → DV → resources', async () => {
+  await test('K/D Cost is placed after K/D and reports incomplete source events explicitly', async () => {
+    await page.waitForFunction(() => [...document.querySelectorAll('th')]
+      .some(th => (th.textContent || '').trim() === 'K/D Cost'), null, { timeout: 10000 });
+    const state = await page.evaluate(() => {
+      const headers = [...document.querySelectorAll('thead tr:nth-child(2) th')]
+        .map(th => (th.textContent || '').replace(/\s+/g, ' ').trim());
+      const cells = [...document.querySelectorAll('td[data-aoe4-details-metric="kd-cost"]')]
+        .map(td => ({ text: (td.textContent || '').trim(), title: td.title }));
+      const groups = [...document.querySelectorAll('thead tr:first-child th')]
+        .map(th => ({ text: (th.textContent || '').trim(), colspan: th.getAttribute('colspan') }));
+      return { headers, cells, groups };
+    });
+    assert(
+      state.headers.indexOf('K/D Cost') === state.headers.indexOf('K/D') + 1,
+      `K/D Cost not placed after K/D: ${JSON.stringify(state.headers)}`,
+    );
+    assert(
+      state.cells.length === 2 && state.cells.every(cell => cell.text === '—' && /incomplete/i.test(cell.title)),
+      `incomplete unit events should be explicit: ${JSON.stringify(state.cells)}`,
+    );
+    assert(
+      state.groups.find(group => group.text === 'Military')?.colspan === '5',
+      `Military colspan not extended: ${JSON.stringify(state.groups)}`,
+    );
+  });
+
+  await test('Summary+ chart options are first and ordered Army → AVL → DV → villagers → resources', async () => {
     await page.waitForFunction(() => {
       const select = document.querySelector('select');
       return select?.value?.includes('army-composition') &&
@@ -599,6 +626,7 @@ async function installNumudanRoutesWithDelayedPbgidMap(delayMs = 2500) {
       'Army Composition',
       'Army Value Lead',
       'Destroyed Value',
+      'Villagers Killed / Lost',
       'Resources Gathered: Total',
       'Resources Gathered: Food',
       'Resources Gathered: Wood',
@@ -620,6 +648,29 @@ async function installNumudanRoutesWithDelayedPbgidMap(delayMs = 2500) {
       state.nativeArmyOptionText === 'Army',
       `native "Army" option was relabeled in the dropdown (expected "Army", got ${JSON.stringify(state.nativeArmyOptionText)})`,
     );
+  });
+
+  await test('Villagers Killed / Lost can be selected and rendered', async () => {
+    const selected = await page.evaluate(() => {
+      const select = document.querySelector('select');
+      const option = [...(select?.querySelectorAll('option') || [])]
+        .find(opt => (opt.textContent || '').trim() === 'Villagers Killed / Lost');
+      if (!select || !option) return false;
+      select.value = option.value;
+      select.dispatchEvent(new Event('input', { bubbles: true }));
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    });
+    assert(selected, 'Villagers Killed / Lost option not found');
+    await page.waitForFunction(() => {
+      const heading = [...document.querySelectorAll('h3')]
+        .find(h => (h.textContent || '').includes('Villagers Killed / Lost'));
+      const canvas = document.querySelector('canvas[data-aoe4-summary-canvas]');
+      if (!heading || !canvas) return false;
+      const style = getComputedStyle(canvas);
+      const rect = canvas.getBoundingClientRect();
+      return style.display !== 'none' && rect.width > 0 && rect.height > 0;
+    }, null, { timeout: 10000 });
   });
 
   await test('Army Value mode has Count/Value labels and non-zero value data for override-only PBGIDs', async () => {

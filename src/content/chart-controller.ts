@@ -45,7 +45,6 @@ import {
   attachPlayerToggle,
   suppressHoverUntilPointerMove,
 } from './interactions.ts';
-import { clearDetailsTableMetrics, scheduleDetailsTableMetrics } from './details-metrics.ts';
 import { TIMELINE_NATIVE_GATE_CSS } from '../shared/timeline-gate-css.ts';
 import type {
   AgeUp,
@@ -55,6 +54,20 @@ import type {
   TimelineElements,
   TooltipCacheRow,
 } from './types.ts';
+
+type CombatMetricsApi = {
+  buildVillagerCombatCharts(
+    summary: GameSummary,
+    nativeColors: Map<string, string>,
+    nativePlayerOrder?: string[],
+  ): Chart[];
+  clearDetailsTableMetrics(): void;
+  scheduleDetailsTableMetrics(summary: GameSummary, gameId?: string): void;
+};
+
+const combatMetrics = (globalThis as typeof globalThis & {
+  __aoe4CombatMetrics: CombatMetricsApi;
+}).__aoe4CombatMetrics;
 
 type BuildOrderElement = HTMLElement & {
   __aoe4BuildOrderObserver?: MutationObserver;
@@ -95,7 +108,7 @@ function clearActiveSummaryRoute(clearColors = true): void {
   summaryChartGameId = '';
   summaryChartRouteToken++;
   removeSummaryDefaultGateStyle();
-  clearDetailsTableMetrics();
+  combatMetrics.clearDetailsTableMetrics();
   if (clearColors) sendChartInjectorControlMessage({ source: 'aoe4-color-ext', type: 'clear-colors' });
 }
 
@@ -143,7 +156,7 @@ export function tryAddSummaryCharts(): void {
   if (!chartsEnabled()) {
     const timeline = findTimelineElements() as TimelineElements | null;
     removeSummaryChartsFromTimeline(timeline);
-    clearDetailsTableMetrics();
+    combatMetrics.clearDetailsTableMetrics();
     if (summaryChartGameId) clearActiveSummaryRoute(!recolorEnabled());
     if (gameId && recolorEnabled()) ensureColorOnlyReplayColors(gameId);
     else if (gameId) releaseNativeChartColorGate();
@@ -213,7 +226,7 @@ export function tryAddSummaryCharts(): void {
         removeSummaryDefaultGateStyle();
         return;
       }
-      scheduleDetailsTableMetrics(summary, gameId);
+      combatMetrics.scheduleDetailsTableMetrics(summary, gameId);
       const replayColors = await replayColorsPromise;
       if (!isCurrentGameRequest(timeline, gameId, routeToken)) {
         if (timeline.root.dataset.aoe4SummaryPlusPendingUrl === url) {
@@ -435,6 +448,7 @@ function buildTimelineChartCatalog(summary: GameSummary, nativeColors: Map<strin
     .concat(buildArmyCharts(summary, nativeColors, nativePlayerOrder) as Chart[])
     .concat(buildArmyValueLeadCharts(summary, nativeColors, nativePlayerOrder) as Chart[])
     .concat(buildDestroyedValueCharts(summary, nativeColors, nativePlayerOrder) as Chart[])
+    .concat(combatMetrics.buildVillagerCombatCharts(summary, nativeColors, nativePlayerOrder))
     .concat(buildResourceGatheredCharts(summary, nativeColors) as Chart[]);
   const ageUps = extractAgeUps(summary, nativeColors) as AgeUp[];
   for (const chart of charts) {
