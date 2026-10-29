@@ -300,12 +300,6 @@ export function recomputeVisibleGeometry(chart: Chart): void {
       if (value > yMax) yMax = value;
     }
   }
-  for (const band of chart.bands || []) {
-    if (!allSeries.some(series =>
-      series.playerName === band.playerName && !series._hidden
-    )) continue;
-    for (const value of band.toValues) if (value > yMax) yMax = value;
-  }
   const villagerTarget = chart.type === 'villager-efficiency'
     ? Number(chart.options?.villagerTarget)
     : Number.NaN;

@@ -114,24 +114,9 @@ test('buildVillagerEfficiencyCharts separates missed production from villagers k
   assert.deepEqual(series(chart, 'Alpha', 'Ideal').values, [6, 6, 7, 7, 8, 8, 9]);
   assert.deepEqual(series(chart, 'Alpha', 'Missed production').values, [0, 0, 0, 0, 1, 1, 1]);
   assert.deepEqual(series(chart, 'Alpha', 'Killed').values, [0, 0, 0, 0, 0, 0, 1]);
-
-  const alphaBands = chart.bands.filter(band => band.playerName === 'Alpha');
-  assert.deepEqual(alphaBands.map(band => ({
-    label: band.label,
-    from: band.fromValues,
-    to: band.toValues,
-  })), [
-    {
-      label: 'Killed',
-      from: [0, 0, 0, 0, 0, 0, 0],
-      to: [0, 0, 0, 0, 0, 0, 1],
-    },
-    {
-      label: 'Missed production',
-      from: [0, 0, 0, 0, 0, 0, 1],
-      to: [0, 0, 0, 0, 1, 1, 2],
-    },
-  ]);
+  assert.equal(series(chart, 'Alpha', 'Missed production').render, 'step');
+  assert.equal(series(chart, 'Alpha', 'Killed').render, 'step');
+  assert.equal(chart.bands, undefined);
 });
 
 test('missed production does not recount a deficit after a later villager completion', () => {
@@ -390,25 +375,12 @@ test('ideal plateaus at the target without changing missed production', () => {
   assert.equal(series(chart, 'At Target', 'Ideal')._rawIdealValues.at(-1), 156);
   assert.equal(series(chart, 'Over Target', 'Ideal')._rawIdealValues.at(-1), 275);
   assert.equal(series(chart, 'At Target', 'Missed production').values.at(-1), 0);
-  assert.equal(
-    chart.bands.find(band => band.playerName === 'At Target' && band.label === 'Missed production').toValues.at(-1),
-    0,
-    'bottom-stacked missed-production shading is empty when nothing was missed',
-  );
 
   applyVillagerEfficiencyTarget(chart, 140);
   assert.equal(series(chart, 'At Target', 'Ideal').values.at(-1), 140);
   assert.equal(series(chart, 'Over Target', 'Ideal').values.at(-1), 140);
   assert.equal(series(chart, 'At Target', 'Missed production').values.at(-1), 36);
-  assert.equal(
-    chart.bands.find(band => band.playerName === 'At Target' && band.label === 'Missed production').fromValues.at(-1),
-    0,
-  );
-  assert.equal(
-    chart.bands.find(band => band.playerName === 'At Target' && band.label === 'Missed production').toValues.at(-1),
-    36,
-    'target reapplication keeps missed-production shading stacked from the bottom',
-  );
+  assert.equal(series(chart, 'At Target', 'Missed production').render, 'step');
 
   applyVillagerEfficiencyTarget(chart, 100);
   assert.equal(series(chart, 'At Target', 'Ideal').values.at(-1), 100);

@@ -40,7 +40,7 @@ function makeChart(type = 'villager-efficiency') {
         playerName,
         color: '#fff',
         values: [6, 7],
-        render: unitLabel === 'Actual' || unitLabel === 'Ideal' ? 'line' : 'metric',
+        render: unitLabel === 'Actual' || unitLabel === 'Ideal' ? 'line' : 'step',
       });
     }
   }
@@ -117,17 +117,12 @@ describe('Villager Efficiency player radios', () => {
     assert.deepEqual(visiblePlayers(chart), ['Bravo'], 'selected radio cannot be toggled off');
   });
 
-  test('includes bottom-stacked debt bands in the uncropped y-axis', () => {
+  test('includes cumulative debt step lines in the uncropped y-axis', () => {
     const chart = makeChart();
     chart.options.villagerTarget = 8;
-    chart.bands = [{
-      key: 'Alpha:debt',
-      label: 'Missed production',
-      playerName: 'Alpha',
-      color: '#F59E0B',
-      fromValues: [0, 4],
-      toValues: [0, 12],
-    }];
+    chart.data.series.find(series =>
+      series.playerName === 'Alpha' && series.unitLabel === 'Missed production'
+    ).values = [0, 12];
 
     recomputeVisibleGeometry(chart);
     assert.ok(chart._geometry.yMax >= 12);

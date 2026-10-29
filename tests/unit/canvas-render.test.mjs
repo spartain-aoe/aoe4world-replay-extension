@@ -141,7 +141,7 @@ describe('drawTimelineCanvasChart', () => {
     }
   });
 
-  it('renders villager-efficiency bands and dashed ideal lines without drawing metric-only series', () => {
+  it('renders villager-efficiency debt as cumulative step lines with increment markers', () => {
     const canvas = makeCanvas();
     const actual = {
       ...lineSeriesItem('alpha:actual', [6, 7, 7], { playerName: 'Alpha' }),
@@ -155,40 +155,31 @@ describe('drawTimelineCanvasChart', () => {
     const missed = {
       ...lineSeriesItem('alpha:missed', [0, 0, 1], { playerName: 'Alpha', color: '#F59E0B' }),
       unitLabel: 'Missed production',
-      render: 'metric',
+      render: 'step',
     };
     const killed = {
       ...lineSeriesItem('alpha:killed', [0, 0, 1], { playerName: 'Alpha', color: '#EF4444' }),
       unitLabel: 'Killed',
-      render: 'metric',
+      render: 'step',
     };
     const chart = makeChart('villager-efficiency', [actual, ideal, missed, killed], {
       labels: [0, 10, 20],
       geometry: { yMin: 0, yMax: 10 },
       options: { villagerTarget: 8 },
     });
-    chart.bands = [
-      {
-        key: 'alpha:killed-band',
-        label: 'Killed',
-        playerName: 'Alpha',
-        color: '#EF4444',
-        fromValues: [0, 0, 0],
-        toValues: [0, 0, 1],
-      },
-      {
-        key: 'alpha:missed-band',
-        label: 'Missed production',
-        playerName: 'Alpha',
-        color: '#F59E0B',
-        fromValues: [0, 0, 1],
-        toValues: [0, 0, 2],
-      },
-    ];
-
     drawTimelineCanvasChart(canvas, chart);
 
-    assert.equal(canvas._ctx._calls.filter(call => call.m === 'fill').length, 2);
+    const calls = canvas._ctx._calls;
+    const firstMarker = calls.findIndex(call => call.m === 'arc');
+    const stepStroke = calls.findLastIndex((call, index) => index < firstMarker && call.m === 'stroke');
+    const stepStart = calls.findLastIndex((call, index) => index < stepStroke && call.m === 'beginPath');
+    assert.equal(
+      calls.slice(stepStart, stepStroke).filter(call => call.m === 'moveTo' || call.m === 'lineTo').length,
+      5,
+      'three samples should render as one move plus two horizontal/vertical steps',
+    );
+    assert.equal(calls.filter(call => call.m === 'arc').length, 2);
+    assert.equal(calls.filter(call => call.m === 'fill').length, 2);
     assert.ok(
       canvas._ctx._calls.some(call => call.m === 'setLineDash' && call.args[0]?.join(',') === '6,4'),
       'expected the ideal line to use its dashed stroke pattern',
@@ -199,8 +190,8 @@ describe('drawTimelineCanvasChart', () => {
     );
     assert.equal(
       canvas._ctx._calls.filter(call => call.m === 'setLineDash' && call.args[0]?.length === 0).length,
-      3,
-      'the two line series and target reference should reset their stroke patterns',
+      5,
+      'the four line series and target reference should reset their stroke patterns',
     );
   });
 
