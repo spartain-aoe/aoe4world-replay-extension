@@ -18,6 +18,7 @@
 import { writeFile, mkdir, stat } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { resourceCostTotal } from './resource-cost.mjs';
 
 const SOURCES = [
   {
@@ -228,9 +229,7 @@ function slimFamilies(json, opts = {}) {
   for (const fam of data) {
     if (!fam || typeof fam !== 'object') continue;
     families++;
-    const familyCost = includeCosts && Number.isFinite(fam.costs?.total) && fam.costs.total > 0
-      ? fam.costs.total
-      : null;
+    const familyCost = includeCosts ? resourceCostTotal(fam.costs) : null;
     const familyEntry = {
       n: fam.name || fam.id || 'Unit',
       k: fam.id || (fam.name || '').toLowerCase().replace(/\s+/g, '-'),
@@ -273,9 +272,7 @@ function slimFamilies(json, opts = {}) {
           // Variations can override family-level costs (e.g. byzantine archer
           // costs 30f/50w while the family-level archer is also 30f/50w but
           // some civs differ). Use variation cost when present.
-          const variationCost = Number.isFinite(v.costs?.total) && v.costs.total > 0
-            ? v.costs.total
-            : null;
+          const variationCost = resourceCostTotal(v.costs);
           if (variationCost != null && variationCost !== familyCost) {
             entry = { ...familyEntry, c: variationCost };
           }

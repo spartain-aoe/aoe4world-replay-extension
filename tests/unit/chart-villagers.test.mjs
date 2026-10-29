@@ -111,7 +111,7 @@ test('buildVillagerEfficiencyCharts separates missed production from villagers k
   assert.equal(chart.type, 'villager-efficiency');
   assert.deepEqual(chart.data.labels, [0, 10, 20, 30, 40, 50, 60]);
   assert.deepEqual(series(chart, 'Alpha', 'Actual').values, [6, 6, 7, 7, 7, 8, 7]);
-  assert.deepEqual(series(chart, 'Alpha', 'Ideal').values, [6, 6, 7, 7, 8, 9, 9]);
+  assert.deepEqual(series(chart, 'Alpha', 'Ideal').values, [6, 6, 7, 7, 8, 8, 9]);
   assert.deepEqual(series(chart, 'Alpha', 'Missed production').values, [0, 0, 0, 0, 1, 1, 1]);
   assert.deepEqual(series(chart, 'Alpha', 'Killed').values, [0, 0, 0, 0, 0, 0, 1]);
 
@@ -348,7 +348,7 @@ test('Japanese ideal production infers a Town Center Yorishiro from sustained lo
   );
 });
 
-test('ideal production soft-caps at 120 unless actual living villagers go higher', () => {
+test('soft cap stops missed debt without flattening uninterrupted ideal production', () => {
   const summary = {
     duration: 3000,
     players: [
@@ -363,17 +363,24 @@ test('ideal production soft-caps at 120 unless actual living villagers go higher
 
   const [chart] = buildVillagerEfficiencyCharts(summary, new Map());
 
-  assert.equal(series(chart, 'Capped', 'Ideal').values.at(-1), 120);
-  assert.equal(series(chart, 'Over Cap', 'Ideal').values.at(-1), 125);
+  assert.equal(series(chart, 'Capped', 'Ideal').values.at(-1), 156);
+  assert.equal(series(chart, 'Over Cap', 'Ideal').values.at(-1), 275);
+  assert.equal(series(chart, 'Capped', 'Missed production').values.at(-1), 114);
+  assert.equal(
+    chart.bands.find(band => band.playerName === 'Capped' && band.label === 'Missed production').toValues.at(-1),
+    120,
+    'amber missed-production shading stops at the soft cap',
+  );
 
   applyVillagerEfficiencySoftCap(chart, 140);
-  assert.equal(series(chart, 'Capped', 'Ideal').values.at(-1), 140);
-  assert.equal(series(chart, 'Over Cap', 'Ideal').values.at(-1), 140);
+  assert.equal(series(chart, 'Capped', 'Ideal').values.at(-1), 156);
+  assert.equal(series(chart, 'Over Cap', 'Ideal').values.at(-1), 275);
+  assert.equal(series(chart, 'Capped', 'Missed production').values.at(-1), 134);
 
   applyVillagerEfficiencySoftCap(chart, 100);
-  assert.equal(series(chart, 'Capped', 'Ideal').values.at(-1), 100);
+  assert.equal(series(chart, 'Capped', 'Ideal').values.at(-1), 156);
   assert.equal(series(chart, 'Capped', 'Missed production').values.at(-1), 94);
-  assert.equal(series(chart, 'Over Cap', 'Ideal').values.at(-1), 125);
+  assert.equal(series(chart, 'Over Cap', 'Ideal').values.at(-1), 275);
 });
 
 test('missed production never decreases and stops accumulating after the soft cap', () => {
@@ -393,8 +400,8 @@ test('missed production never decreases and stops accumulating after the soft ca
   const ideal = series(chart, 'Alpha', 'Ideal').values;
 
   assert.deepEqual(missed, [0, 0, 1, 1, 1, 1, 1, 1, 1]);
-  assert.equal(ideal[chart.data.labels.indexOf(40)], 8, 'the counterfactual line reaches the cap');
-  assert.equal(ideal.at(-1), 10, 'later real production raises the line while missed debt stays fixed');
+  assert.equal(ideal[chart.data.labels.indexOf(40)], 8, 'uninterrupted production reaches the cap');
+  assert.equal(ideal.at(-1), 10, 'uninterrupted ideal keeps rising after missed debt freezes');
 });
 
 test('Jin ideal production uses mounted villagers up to 20/23/26 caps, then regular villagers', () => {

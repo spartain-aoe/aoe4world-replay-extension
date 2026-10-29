@@ -88,6 +88,7 @@ function makeChart(type, series, opts = {}) {
   return {
     type,
     value: opts.value || type,
+    options: opts.options,
     data: { labels: opts.labels || [...LABELS], series },
     _geometry: opts.geometry || { yMin: 0, yMax: 100 },
     _legendNodes: opts.legendNodes || null,
@@ -164,6 +165,7 @@ describe('drawTimelineCanvasChart', () => {
     const chart = makeChart('villager-efficiency', [actual, ideal, missed, killed], {
       labels: [0, 10, 20],
       geometry: { yMin: 0, yMax: 10 },
+      options: { villagerSoftCap: 8 },
     });
     chart.bands = [
       {
@@ -191,10 +193,14 @@ describe('drawTimelineCanvasChart', () => {
       canvas._ctx._calls.some(call => call.m === 'setLineDash' && call.args[0]?.join(',') === '6,4'),
       'expected the ideal line to use its dashed stroke pattern',
     );
+    assert.ok(
+      canvas._ctx._calls.some(call => call.m === 'setLineDash' && call.args[0]?.join(',') === '8,5'),
+      'expected a horizontal dashed line at the villager soft cap',
+    );
     assert.equal(
       canvas._ctx._calls.filter(call => call.m === 'setLineDash' && call.args[0]?.length === 0).length,
-      2,
-      'only the two line series should reset their stroke pattern',
+      3,
+      'the two line series and soft-cap reference should reset their stroke patterns',
     );
   });
 

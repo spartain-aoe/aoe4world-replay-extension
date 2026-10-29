@@ -116,6 +116,43 @@ describe('Villager Efficiency player radios', () => {
     assert.deepEqual(visiblePlayers(chart), ['Bravo'], 'selected radio cannot be toggled off');
   });
 
+  test('previews the hovered player without changing the selected radio', () => {
+    const canvas = document.querySelector('canvas');
+    const timeline = makeTimeline(document, canvas);
+    const chart = makeChart();
+
+    attachPlayerToggle(timeline, chart);
+
+    const alphaRow = document.querySelector('[data-player="Alpha"]');
+    const bravoRow = document.querySelector('[data-player="Bravo"]');
+    bravoRow.dispatchEvent(new window.Event('mouseenter'));
+
+    assert.deepEqual(visiblePlayers(chart), ['Bravo']);
+    assert.equal(alphaRow.getAttribute('aria-checked'), 'true');
+    assert.equal(bravoRow.getAttribute('aria-checked'), 'false');
+
+    bravoRow.dispatchEvent(new window.Event('mouseleave'));
+
+    assert.deepEqual(visiblePlayers(chart), ['Alpha']);
+    assert.equal(alphaRow.getAttribute('aria-checked'), 'true');
+    assert.equal(bravoRow.getAttribute('aria-checked'), 'false');
+  });
+
+  test('restores the selected player if the chart detaches during a hover preview', () => {
+    const canvas = document.querySelector('canvas');
+    const timeline = makeTimeline(document, canvas);
+    const chart = makeChart();
+
+    attachPlayerToggle(timeline, chart);
+    const bravoRow = document.querySelector('[data-player="Bravo"]');
+    bravoRow.dispatchEvent(new window.Event('mouseenter'));
+    assert.deepEqual(visiblePlayers(chart), ['Bravo']);
+
+    detachPlayerToggle(timeline);
+
+    assert.deepEqual(visiblePlayers(chart), ['Alpha']);
+  });
+
   test('keeps independent on/off toggles for other chart types', () => {
     const canvas = document.querySelector('canvas');
     const timeline = makeTimeline(document, canvas);

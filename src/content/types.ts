@@ -193,6 +193,7 @@ export interface Chart {
     height?: number;
     armyMode?: 'count' | 'value';
     villagerSoftCap?: number;
+    villagerCropToSoftCap?: boolean;
     [key: string]: unknown;
   };
   data: ChartData;
@@ -208,6 +209,7 @@ export interface Chart {
   _cachedYMax?: number;
   highlightKey?: string | null;
   nativePlayerOrder?: string[];
+  _selectedPlayerName?: string | null;
 }
 
 export interface StackedYCache {
@@ -250,6 +252,7 @@ export interface TimelineElements {
   __aoe4NativeCanvas?: HTMLCanvasElement & CanvasExtensions;
   __aoe4OverlayResizeObserver?: ResizeObserver | null;
   __aoe4PlayerToggleHandlers?: PlayerToggleHandler[];
+  __aoe4PlayerToggleRestore?: (() => void) | null;
   __aoe4LegendPending?: boolean;
   __aoe4LegendChart?: Chart;
   __aoe4BuildOrderRetryScheduled?: boolean;

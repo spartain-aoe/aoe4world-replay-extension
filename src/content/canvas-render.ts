@@ -531,6 +531,27 @@ export function drawTimelineCanvasChart(
   ctx.globalAlpha = 1;
   ctx.restore();
 
+  const villagerSoftCap = chart.type === 'villager-efficiency'
+    ? Number(chart.options?.villagerSoftCap)
+    : Number.NaN;
+  if (
+    Number.isFinite(villagerSoftCap) &&
+    villagerSoftCap >= yMin &&
+    villagerSoftCap <= yMax
+  ) {
+    const capY = summaryScaleY(villagerSoftCap, yMin, yMax, margin, plotH);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(226,232,240,0.65)';
+    ctx.lineWidth = 1.25;
+    ctx.setLineDash([8, 5]);
+    ctx.beginPath();
+    ctx.moveTo(margin.left, capY);
+    ctx.lineTo(cssWidth - margin.right, capY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
   if (chart.ageUps?.length) {
     drawAgeUpIndicators(ctx, chart.ageUps, {
       margin, plotW, plotH, cssWidth, gameDuration: ageUpGameDuration,

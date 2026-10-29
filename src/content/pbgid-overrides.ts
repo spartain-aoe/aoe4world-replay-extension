@@ -167,7 +167,7 @@ export const pbgidUnitOverridesMap: Map<number, PbgidEntry> = new Map([
   [9000510, unit('Mansa Musofadi Warrior', 'mansa-musofadi-warrior', 'mansa-musofadi-warrior-2')], // x4 musofadi_mansa [malians]
   [9000526, unit('Horse Archer', 'horse-archer', 'horse-archer-4')], // x4 horsearcher_4 [ottomans]
   [9000640, unit('Great Bombard', 'great-bombard', 'great-bombard-4')], // x4 great_bombard [ottomans]
-  [9005329, unit('Militia', 'militia', 'militia-2')], // x4 militia_handcannoneer [rus]
+  [9005329, { ...unit('Militia', 'militia', 'militia-2'), c: 0 }], // x4 militia_handcannoneer [rus]
   [2108161, unit('Battering Ram', 'battering-ram', 'battering-ram-2')], // x3 ram_2 [french]
   [2117336, unit('Counterweight Trebuchet', 'counterweight-trebuchet', 'counterweight-trebuchet-4')], // x3 trebuchet_4 [mongols]
   [2143533, unit('Ribauldequin', 'ribauldequin', 'ribauldequin-4')], // x3 ribauldequin_4 [japanese]

@@ -18,6 +18,7 @@ export interface DetailsPlayerMetrics {
   killedUnitCost: number | null;
   lostUnitCost: number | null;
   kdCostUnavailableReason: string | null;
+  kdCostApproximateReason: string | null;
 }
 
 const DETAILS_METRIC_ATTR = 'data-aoe4-details-metric';
@@ -152,14 +153,57 @@ function destroyedUnitCost(player: PlayerSummary): DestroyedUnitCost {
   return { total, eventCount, missingCostEvents };
 }
 
-function incompleteEventReason(label: string, actual: number, expected: number | null): string | null {
-  if (expected == null || actual === expected) return null;
-  return `${label} unit destruction events are incomplete (${actual} of ${expected}).`;
+type ReconciledUnitCost = {
+  total: number | null;
+  unavailableReason: string | null;
+  approximateReason: string | null;
+};
+
+function reconcileDestroyedUnitCost(
+  label: string,
+  destroyed: DestroyedUnitCost,
+  expectedCount: number | null,
+): ReconciledUnitCost {
+  if (destroyed.missingCostEvents > 0) {
+    return {
+      total: null,
+      unavailableReason: `Missing unit cost for ${destroyed.missingCostEvents} ${label.toLowerCase()} unit event${destroyed.missingCostEvents === 1 ? '' : 's'}.`,
+      approximateReason: null,
+    };
+  }
+  if (expectedCount == null) {
+    return {
+      total: destroyed.total,
+      unavailableReason: null,
+      approximateReason: destroyed.eventCount > 0
+        ? `${label} native combat count is unavailable; using ${destroyed.eventCount} recorded destruction event${destroyed.eventCount === 1 ? '' : 's'}.`
+        : null,
+    };
+  }
+  if (destroyed.eventCount === expectedCount) {
+    return {
+      total: destroyed.total,
+      unavailableReason: null,
+      approximateReason: null,
+    };
+  }
+  if (destroyed.eventCount === 0) {
+    return {
+      total: null,
+      unavailableReason: `${label} unit value cannot be estimated: 0 recorded destruction events versus ${expectedCount} native combat death${expectedCount === 1 ? '' : 's'}.`,
+      approximateReason: null,
+    };
+  }
+  return {
+    total: destroyed.total * (expectedCount / destroyed.eventCount),
+    unavailableReason: null,
+    approximateReason: `${label} unit value is estimated from ${destroyed.eventCount} recorded destruction events versus ${expectedCount} native combat death${expectedCount === 1 ? '' : 's'}; recorded value was scaled proportionally.`,
+  };
 }
 
 function calculateKdCostMetrics(players: PlayerSummary[]): Array<Pick<
   DetailsPlayerMetrics,
-  'killedUnitCost' | 'lostUnitCost' | 'kdCostUnavailableReason'
+  'killedUnitCost' | 'lostUnitCost' | 'kdCostUnavailableReason' | 'kdCostApproximateReason'
 >> {
   const losses = players.map(destroyedUnitCost);
   const exactOneVsOne = players.length === 2 && (
@@ -171,37 +215,36 @@ function calculateKdCostMetrics(players: PlayerSummary[]): Array<Pick<
   return players.map((player, index) => {
     const ownLosses = losses[index];
     const expectedLosses = playerCombatStat(player, ['edeaths', 'eliteDeaths', 'elite_deaths']);
-    const lostCountReason = incompleteEventReason('Own', ownLosses.eventCount, expectedLosses);
-    const lostCost = ownLosses.missingCostEvents === 0 && !lostCountReason
-      ? ownLosses.total
-      : null;
+    const reconciledOwnLosses = reconcileDestroyedUnitCost('Own', ownLosses, expectedLosses);
 
     if (!exactOneVsOne) {
       return {
         killedUnitCost: null,
-        lostUnitCost: lostCost,
+        lostUnitCost: reconciledOwnLosses.total,
         kdCostUnavailableReason: 'Per-player killed unit value is unavailable for team games and FFAs because the summary records the victim unit type but not the killer.',
+        kdCostApproximateReason: null,
       };
     }
 
     const opponentLosses = losses[index === 0 ? 1 : 0];
     const expectedKills = playerCombatStat(player, ['elitekill', 'eliteKillsTotal', 'elite_kills_total']);
-    const killedCountReason = incompleteEventReason('Enemy', opponentLosses.eventCount, expectedKills);
-    const reasons = [
-      lostCountReason,
-      killedCountReason,
-      ownLosses.missingCostEvents > 0
-        ? `Missing unit cost for ${ownLosses.missingCostEvents} own lost unit event${ownLosses.missingCostEvents === 1 ? '' : 's'}.`
-        : null,
-      opponentLosses.missingCostEvents > 0
-        ? `Missing unit cost for ${opponentLosses.missingCostEvents} enemy destroyed unit event${opponentLosses.missingCostEvents === 1 ? '' : 's'}.`
-        : null,
+    const reconciledOpponentLosses = reconcileDestroyedUnitCost('Enemy', opponentLosses, expectedKills);
+    const unavailableReasons = [
+      reconciledOwnLosses.unavailableReason,
+      reconciledOpponentLosses.unavailableReason,
+    ].filter((reason): reason is string => Boolean(reason));
+    const approximateReasons = [
+      reconciledOwnLosses.approximateReason,
+      reconciledOpponentLosses.approximateReason,
     ].filter((reason): reason is string => Boolean(reason));
 
     return {
-      killedUnitCost: reasons.length === 0 ? opponentLosses.total : null,
-      lostUnitCost: reasons.length === 0 ? ownLosses.total : null,
-      kdCostUnavailableReason: reasons.length ? reasons.join(' ') : null,
+      killedUnitCost: unavailableReasons.length === 0 ? reconciledOpponentLosses.total : null,
+      lostUnitCost: unavailableReasons.length === 0 ? reconciledOwnLosses.total : null,
+      kdCostUnavailableReason: unavailableReasons.length ? unavailableReasons.join(' ') : null,
+      kdCostApproximateReason: unavailableReasons.length || approximateReasons.length === 0
+        ? null
+        : approximateReasons.join(' '),
     };
   });
 }
@@ -248,11 +291,16 @@ export function formatIdleTcTime(seconds: number | null): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-export function formatKdCostRatio(killedCost: number | null, lostCost: number | null): string {
+export function formatKdCostRatio(
+  killedCost: number | null,
+  lostCost: number | null,
+  approximate = false,
+): string {
   if (killedCost == null || lostCost == null) return '—';
-  if (lostCost > 0) return String(Math.round((killedCost / lostCost) * 100) / 100);
-  if (killedCost > 0) return '∞';
-  return '';
+  let ratio = '';
+  if (lostCost > 0) ratio = String(Math.round((killedCost / lostCost) * 100) / 100);
+  else if (killedCost > 0) ratio = '∞';
+  return approximate && ratio ? `≈${ratio}` : ratio;
 }
 
 function headerText(cell: Element): string {
@@ -422,6 +470,9 @@ function kdCostCellTitle(metric: DetailsPlayerMetrics): string {
   }
   const killed = Math.round(metric.killedUnitCost || 0).toLocaleString();
   const lost = Math.round(metric.lostUnitCost || 0).toLocaleString();
+  if (metric.kdCostApproximateReason) {
+    return `K/D Cost estimate: ${metric.kdCostApproximateReason} Estimated enemy unit value killed: ${killed}; estimated own unit value lost: ${lost}.`;
+  }
   return `${KD_COST_TITLE} Enemy unit value killed: ${killed}; own unit value lost: ${lost}.`;
 }
 
@@ -438,6 +489,7 @@ export function installDetailsTableMetrics(summary: GameSummary, statsMetrics?: 
     item.killedUnitCost,
     item.lostUnitCost,
     item.kdCostUnavailableReason,
+    item.kdCostApproximateReason,
   ]));
   const nativeSubHeaders = tableHeadRows(table)[1]
     ? rowCells(tableHeadRows(table)[1]).filter(cell => !cell.hasAttribute(DETAILS_METRIC_ATTR))
@@ -472,7 +524,11 @@ export function installDetailsTableMetrics(summary: GameSummary, statsMetrics?: 
       updateMetricCell(
         row,
         KD_COST_METRIC,
-        formatKdCostRatio(rowMetrics.killedUnitCost, rowMetrics.lostUnitCost),
+        formatKdCostRatio(
+          rowMetrics.killedUnitCost,
+          rowMetrics.lostUnitCost,
+          Boolean(rowMetrics.kdCostApproximateReason),
+        ),
         kdCostCellTitle(rowMetrics),
       );
     }

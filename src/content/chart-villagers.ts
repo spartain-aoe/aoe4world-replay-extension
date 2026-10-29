@@ -316,11 +316,13 @@ function villagerEfficiencyValues(
 ): {
   idealValues: number[];
   killedUpperValues: number[];
+  missedUpperValues: number[];
   missedValues: number[];
 } {
   const cap = normalizeSoftCap(softCap);
   const idealValues: number[] = [];
   const killedUpperValues: number[] = [];
+  const missedUpperValues: number[] = [];
   const missedValues: number[] = [];
   let cumulativeMissed = 0;
   let countNewMisses = true;
@@ -339,14 +341,15 @@ function villagerEfficiencyValues(
     }
     const killedUpper = actualValues[index] + killedValues[index];
     killedUpperValues.push(killedUpper);
+    missedUpperValues.push(killedUpper + cumulativeMissed);
     missedValues.push(cumulativeMissed);
-    idealValues.push(killedUpper + cumulativeMissed);
+    idealValues.push(rawIdealValues[index]);
   }
-  return { idealValues, killedUpperValues, missedValues };
+  return { idealValues, killedUpperValues, missedUpperValues, missedValues };
 }
 
 function villagerEfficiencyMeta(softCap: number): string {
-  return `Actual living villagers versus their counterfactual total with uninterrupted production. Missed production is cumulative and stops increasing when the counterfactual reaches ${normalizeSoftCap(softCap)}; later real production can carry the line higher. Red shading is villagers killed; amber shading is missed production.`;
+  return `Actual living villagers versus uninterrupted production from every available producer. The dashed ideal keeps rising while a producer remains available. Missed production is cumulative and stops increasing when the ideal reaches ${normalizeSoftCap(softCap)}. Red shading is villagers killed; amber shading is counted missed production.`;
 }
 
 function sameTime(a: number, b: number): boolean {
@@ -493,7 +496,7 @@ export function applyVillagerEfficiencySoftCap(chart: Chart, softCap: number): v
     );
     if (missedBand) {
       missedBand.fromValues = values.killedUpperValues;
-      missedBand.toValues = values.idealValues;
+      missedBand.toValues = values.missedUpperValues;
     }
   }
   chart.options = { ...(chart.options || {}), villagerSoftCap: cap };
@@ -570,6 +573,7 @@ export function buildVillagerEfficiencyCharts(
     const {
       idealValues,
       killedUpperValues,
+      missedUpperValues,
       missedValues,
     } = villagerEfficiencyValues(
       rawIdealValues,
@@ -646,7 +650,7 @@ export function buildVillagerEfficiencyCharts(
         playerName: name,
         color: MISSED_COLOR,
         fromValues: killedUpperValues,
-        toValues: idealValues,
+        toValues: missedUpperValues,
         opacity: 0.16,
       },
     );

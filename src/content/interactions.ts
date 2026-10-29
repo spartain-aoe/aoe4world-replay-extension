@@ -117,6 +117,7 @@ export function attachPlayerToggle(timeline: TimelineElements, chart: Chart): vo
   } => Boolean(entry));
   const handlers: PlayerToggleHandler[] = [];
   const radioMode = chart.type === 'villager-efficiency';
+  let selectedPlayerName: string | null = chart._selectedPlayerName || null;
 
   const syncRow = (row: HTMLElement, playerName: string, hidden: boolean): void => {
     row.style.opacity = hidden ? '0.35' : '';
@@ -134,12 +135,27 @@ export function attachPlayerToggle(timeline: TimelineElements, chart: Chart): vo
     if (panel) panel.style.display = hidden ? 'none' : (wasOpen ? '' : 'none');
   };
 
-  const selectOnlyPlayer = (playerName: string): void => {
-    chart.highlightKey = null;
+  const showOnlyPlayer = (playerName: string): void => {
     for (const series of chart.data.series) {
       if (!series.playerName) continue;
       series._hidden = series.playerName !== playerName;
     }
+  };
+
+  const refreshVisibleGeometry = (): void => {
+    delete chart._cachedPlotH;
+    delete chart._cachedMarginTop;
+    delete chart._cachedYMin;
+    delete chart._cachedYMax;
+    delete chart._renderedY;
+    recomputeVisibleGeometry(chart);
+  };
+
+  const selectOnlyPlayer = (playerName: string): void => {
+    selectedPlayerName = playerName;
+    chart._selectedPlayerName = playerName;
+    chart.highlightKey = null;
+    showOnlyPlayer(playerName);
     for (const entry of matchedRows) {
       syncRow(entry.row, entry.playerName, entry.playerName !== playerName);
     }
@@ -152,9 +168,14 @@ export function attachPlayerToggle(timeline: TimelineElements, chart: Chart): vo
     const visiblePlayerNames = chartPlayerNames.filter(playerName =>
       chart.data.series.some(series => series.playerName === playerName && !series._hidden)
     );
-    const selectedPlayerName = visiblePlayerNames.length === 1
-      ? visiblePlayerNames[0]
-      : matchedRows[0]?.playerName || chart.nativePlayerOrder?.[0] || chartPlayerNames[0];
+    const persistedPlayerName = chart._selectedPlayerName && chartPlayerNames.includes(chart._selectedPlayerName)
+      ? chart._selectedPlayerName
+      : null;
+    selectedPlayerName = persistedPlayerName || (
+      visiblePlayerNames.length === 1
+        ? visiblePlayerNames[0]
+        : matchedRows[0]?.playerName || chart.nativePlayerOrder?.[0] || chartPlayerNames[0]
+    );
     if (selectedPlayerName) {
       selectOnlyPlayer(selectedPlayerName);
       recomputeVisibleGeometry(chart);
@@ -187,12 +208,7 @@ export function attachPlayerToggle(timeline: TimelineElements, chart: Chart): vo
         for (const series of seriesForPlayer) series._hidden = anyVisible;
         syncRow(row, playerName, anyVisible);
       }
-      delete chart._cachedPlotH;
-      delete chart._cachedMarginTop;
-      delete chart._cachedYMin;
-      delete chart._cachedYMax;
-      delete chart._renderedY;
-      recomputeVisibleGeometry(chart);
+      refreshVisibleGeometry();
       drawTimelineCanvasChart(timeline.canvas, chart);
     };
     row.addEventListener('click', onClick, true);
@@ -202,15 +218,26 @@ export function attachPlayerToggle(timeline: TimelineElements, chart: Chart): vo
     if (highlightKeyForPlayer) {
       const onEnter = (event: MouseEvent): void => {
         if (shouldSuppressHover(timeline, event)) return;
+        if (radioMode) {
+          showOnlyPlayer(playerName);
+          refreshVisibleGeometry();
+        }
         chart.highlightKey = highlightKeyForPlayer;
         drawTimelineCanvasChartForHover(timeline.canvas, chart);
       };
       const onLeave = (event: MouseEvent): void => {
         if (shouldSuppressHover(timeline, event)) return;
+        let shouldRedraw = false;
+        if (radioMode && selectedPlayerName) {
+          showOnlyPlayer(selectedPlayerName);
+          refreshVisibleGeometry();
+          shouldRedraw = true;
+        }
         if (chart.highlightKey === highlightKeyForPlayer) {
           chart.highlightKey = null;
-          drawTimelineCanvasChartForHover(timeline.canvas, chart);
+          shouldRedraw = true;
         }
+        if (shouldRedraw) drawTimelineCanvasChartForHover(timeline.canvas, chart);
       };
       row.addEventListener('mouseenter', onEnter);
       row.addEventListener('mouseleave', onLeave);
@@ -230,9 +257,19 @@ export function attachPlayerToggle(timeline: TimelineElements, chart: Chart): vo
     }
   }
   timeline.__aoe4PlayerToggleHandlers = handlers;
+  timeline.__aoe4PlayerToggleRestore = radioMode
+    ? () => {
+        if (!selectedPlayerName) return;
+        showOnlyPlayer(selectedPlayerName);
+        chart.highlightKey = null;
+        refreshVisibleGeometry();
+      }
+    : null;
 }
 
 export function detachPlayerToggle(timeline: TimelineElements): void {
+  timeline.__aoe4PlayerToggleRestore?.();
+  timeline.__aoe4PlayerToggleRestore = null;
   const handlers = timeline.__aoe4PlayerToggleHandlers;
   if (!handlers) return;
   for (const h of handlers) {
@@ -262,7 +299,19 @@ export function recomputeVisibleGeometry(chart: Chart): void {
       if (value > yMax) yMax = value;
     }
   }
-  chart._geometry = niceGeometryForChart(chart.type, yMin, yMax);
+  const villagerSoftCap = chart.type === 'villager-efficiency'
+    ? Number(chart.options?.villagerSoftCap)
+    : Number.NaN;
+  if (Number.isFinite(villagerSoftCap) && villagerSoftCap > 0) {
+    if (chart.options?.villagerCropToSoftCap === true) {
+      const geometry = niceGeometryForChart(chart.type, yMin, villagerSoftCap);
+      chart._geometry = { yMin: geometry.yMin, yMax: villagerSoftCap };
+    } else {
+      chart._geometry = niceGeometryForChart(chart.type, yMin, Math.max(yMax, villagerSoftCap));
+    }
+  } else {
+    chart._geometry = niceGeometryForChart(chart.type, yMin, yMax);
+  }
 
   const allSeries = chart.data.series;
   const numSamples = chart.data.labels.length;

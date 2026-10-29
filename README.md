@@ -45,9 +45,9 @@ Click the extension icon to open settings:
 
 Charts and in-game player colors are **on by default**. Open the settings panel to turn any of them off. Replay launching works regardless of these settings.
 
-K/D Cost is exact for 1v1 games. When AoE4 World does not expose complete typed destruction events, it is shown as unavailable instead of using a partial total.
+K/D Cost is exact for 1v1 games when typed destruction events match the native combat counters. A leading `≈` marks games where recorded destruction counts differ and the typed value is proportionally reconciled to those counters. It remains unavailable when a destroyed unit has no authoritative cost.
 
-Villager Efficiency compares each player's actual living villagers with uninterrupted production from every observed villager-producing structure. Red shading shows cumulative villagers killed; amber shading shows cumulative missed production and never decreases. The soft cap (120 by default) stops adding new missed villagers but preserves the existing deficit, and is editable in the chart's top-right corner. The legend acts as a player radio selector so the chart displays one player at a time. Civilization-specific train times and mechanics include dynamic bonuses such as Chinese Song Dynasty, French age scaling, Tughlaq governors, Japanese Town Center Yorishiro, and Jin Dynasty tributary build-limit increases.
+Villager Efficiency compares each player's actual living villagers with uninterrupted production from every observed villager-producing structure. The dashed ideal continues while at least one producer is available. Red shading shows cumulative villagers killed; amber shading shows cumulative missed production and never decreases. The soft cap (120 by default) stops adding new missed villagers but preserves the existing deficit, and is editable in the chart's top-right corner. A dashed horizontal line marks the cap, and the adjacent crop icon can constrain the vertical scale to it. The legend acts as a player radio selector so the chart displays one player at a time; hovering another player temporarily previews them. Civilization-specific train times and mechanics include dynamic bonuses such as Chinese Song Dynasty, French age scaling, Tughlaq governors, Japanese Town Center Yorishiro, and Jin Dynasty tributary build-limit increases.
 
 ## Development
 

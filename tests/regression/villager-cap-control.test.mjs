@@ -114,6 +114,37 @@ describe('villager soft-cap control', () => {
     assert.equal(chart.options.villagerSoftCap, 1);
   });
 
+  test('uses an icon button to persistently crop the chart at the soft cap', () => {
+    const chart = makeChart();
+    chart.data.series[0].values = [6, 150];
+    const timeline = makeTimeline(document);
+
+    renderVillagerSoftCapControl(timeline, chart, (target, cap) => {
+      target.options.villagerSoftCap = cap;
+    });
+
+    const cropButton = timeline.chartBox.querySelector('.aoe4-villager-cap-control-crop');
+    assert.ok(cropButton);
+    assert.equal(cropButton.textContent.trim(), '');
+    assert.equal(cropButton.getAttribute('aria-label'), 'Crop chart to villager soft cap');
+    assert.equal(cropButton.getAttribute('aria-pressed'), 'false');
+    assert.ok(chart._geometry.yMax > 120);
+
+    cropButton.click();
+
+    assert.equal(cropButton.getAttribute('aria-pressed'), 'true');
+    assert.equal(localStorage.getItem('aoe4plus.villagerCropToSoftCap'), 'true');
+    assert.equal(chart.options.villagerCropToSoftCap, true);
+    assert.equal(chart._geometry.yMax, 120);
+
+    cropButton.click();
+
+    assert.equal(cropButton.getAttribute('aria-pressed'), 'false');
+    assert.equal(localStorage.getItem('aoe4plus.villagerCropToSoftCap'), 'false');
+    assert.equal(chart.options.villagerCropToSoftCap, false);
+    assert.ok(chart._geometry.yMax > 120);
+  });
+
   test('re-rendering replaces the control and detach removes it', () => {
     const chart = makeChart();
     const timeline = makeTimeline(document);

@@ -13,6 +13,7 @@ import { pbgidUnitsMap } from '../../src/content/pbgid-map.ts';
 const SPEARMAN_PBGID = 990101;
 const KNIGHT_PBGID = 990102;
 const UNKNOWN_PBGID = 990103;
+const FREE_MILITIA_PBGID = 9005329;
 
 let previousEntries;
 
@@ -108,6 +109,28 @@ test('K/D Cost formatting matches the native K/D zero-loss conventions', () => {
   assert.equal(formatKdCostRatio(null, 100), '—');
 });
 
+test('count mismatches produce an explicit proportional estimate instead of hiding the ratio', () => {
+  const summary = oneVsOneSummary();
+  summary.players[1].buildOrder.push({
+    type: 'Unit',
+    icon: 'units/spearman',
+    pbgid: SPEARMAN_PBGID,
+    destroyed: [25],
+  });
+
+  const [alpha, bravo] = calculateDetailsPlayerMetrics(summary);
+  assert.equal(alpha.killedUnitCost, 125);
+  assert.equal(alpha.lostUnitCost, 100);
+  assert.equal(alpha.kdCostUnavailableReason, null);
+  assert.match(alpha.kdCostApproximateReason, /2 recorded.*1 native/i);
+  assert.equal(formatKdCostRatio(alpha.killedUnitCost, alpha.lostUnitCost, true), '≈1.25');
+
+  assert.equal(bravo.killedUnitCost, 100);
+  assert.equal(bravo.lostUnitCost, 125);
+  assert.equal(bravo.kdCostUnavailableReason, null);
+  assert.match(bravo.kdCostApproximateReason, /2 recorded.*1 native/i);
+});
+
 test('missing unit costs make the ratio explicitly unavailable', () => {
   const summary = oneVsOneSummary();
   summary.players[1].buildOrder = [{
@@ -120,6 +143,21 @@ test('missing unit costs make the ratio explicitly unavailable', () => {
   const [alpha] = calculateDetailsPlayerMetrics(summary);
   assert.equal(alpha.killedUnitCost, null);
   assert.match(alpha.kdCostUnavailableReason, /missing unit cost/i);
+});
+
+test('authoritative zero-cost units remain valid K/D Cost events', () => {
+  const summary = oneVsOneSummary();
+  summary.players[1].buildOrder = [{
+    type: 'Unit',
+    icon: 'icons/races/rus/units/militia_handcannoneer',
+    pbgid: FREE_MILITIA_PBGID,
+    destroyed: [15],
+  }];
+
+  const [alpha] = calculateDetailsPlayerMetrics(summary);
+  assert.equal(alpha.killedUnitCost, 0);
+  assert.equal(alpha.lostUnitCost, 100);
+  assert.equal(alpha.kdCostUnavailableReason, null);
 });
 
 test('team games do not invent per-player kill attribution', () => {

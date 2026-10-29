@@ -579,7 +579,7 @@ async function installNumudanRoutesWithDelayedPbgidMap(delayMs = 2500) {
     assert(donation?.cells.includes('0:45'), `DonationDonation Idle TC not rendered as 0:45: ${JSON.stringify(donation)}`);
   });
 
-  await test('K/D Cost is placed after K/D and reports incomplete source events explicitly', async () => {
+  await test('K/D Cost is placed after K/D and marks reconciled source events as estimates', async () => {
     await page.waitForFunction(() => [...document.querySelectorAll('th')]
       .some(th => (th.textContent || '').trim() === 'K/D Cost'), null, { timeout: 10000 });
     const state = await page.evaluate(() => {
@@ -596,8 +596,10 @@ async function installNumudanRoutesWithDelayedPbgidMap(delayMs = 2500) {
       `K/D Cost not placed after K/D: ${JSON.stringify(state.headers)}`,
     );
     assert(
-      state.cells.length === 2 && state.cells.every(cell => cell.text === '—' && /incomplete/i.test(cell.title)),
-      `incomplete unit events should be explicit: ${JSON.stringify(state.cells)}`,
+      state.cells.length === 2 &&
+        state.cells.map(cell => cell.text).join(',') === '≈0.59,≈1.7' &&
+        state.cells.every(cell => /estimate|scaled proportionally/i.test(cell.title)),
+      `reconciled unit events should be marked as estimates: ${JSON.stringify(state.cells)}`,
     );
     assert(
       state.groups.find(group => group.text === 'Military')?.colspan === '5',
@@ -720,15 +722,24 @@ async function installNumudanRoutesWithDelayedPbgidMap(delayMs = 2500) {
 
     const capState = await page.evaluate(() => {
       const input = document.querySelector('.aoe4-villager-cap-control-input');
-      if (!input) return null;
+      const crop = document.querySelector('.aoe4-villager-cap-control-crop');
+      if (!input || !crop) return null;
       const initial = input.value;
       input.value = '135';
       input.dispatchEvent(new Event('change', { bubbles: true }));
+      if (crop.getAttribute('aria-pressed') === 'true') crop.click();
+      crop.click();
       const result = {
         initial,
         edited: input.value,
         stored: localStorage.getItem('aoe4plus.villagerSoftCap'),
+        cropText: (crop.textContent || '').trim(),
+        cropHasIcon: !!crop.querySelector('svg'),
+        cropLabel: crop.getAttribute('aria-label'),
+        cropPressed: crop.getAttribute('aria-pressed'),
+        cropStored: localStorage.getItem('aoe4plus.villagerCropToSoftCap'),
       };
+      crop.click();
       input.value = '120';
       input.dispatchEvent(new Event('change', { bubbles: true }));
       return result;
@@ -737,6 +748,12 @@ async function installNumudanRoutesWithDelayedPbgidMap(delayMs = 2500) {
     assert(capState.initial === '120', `unexpected default villager soft cap: ${JSON.stringify(capState)}`);
     assert(capState.edited === '135', `villager soft-cap input did not retain edit: ${JSON.stringify(capState)}`);
     assert(capState.stored === '135', `villager soft-cap edit was not applied: ${JSON.stringify(capState)}`);
+    assert(capState.cropText === '' && capState.cropHasIcon,
+      `villager crop control should be icon-only: ${JSON.stringify(capState)}`);
+    assert(capState.cropLabel === 'Crop chart to villager soft cap',
+      `villager crop control should have an accessible label: ${JSON.stringify(capState)}`);
+    assert(capState.cropPressed === 'true' && capState.cropStored === 'true',
+      `villager crop control did not persist its active state: ${JSON.stringify(capState)}`);
   });
 
   await test('Army Value mode has Count/Value labels and non-zero value data for override-only PBGIDs', async () => {
