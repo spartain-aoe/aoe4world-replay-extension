@@ -33,14 +33,19 @@ function makeChart(type = 'villager-efficiency') {
   const series = [];
   for (const playerName of ['Alpha', 'Bravo']) {
     for (const unitLabel of ['Actual', 'Ideal', 'Missed production', 'Killed']) {
+      const values = unitLabel === 'Actual'
+        ? [6, 7]
+        : unitLabel === 'Ideal'
+          ? [6, 8]
+          : [0, 1];
       series.push({
         key: `${playerName}:${unitLabel}`,
         label: `${playerName}: ${unitLabel}`,
         unitLabel,
         playerName,
         color: '#fff',
-        values: [6, 7],
-        render: unitLabel === 'Actual' || unitLabel === 'Ideal' ? 'line' : 'step',
+        values,
+        render: unitLabel === 'Actual' || unitLabel === 'Ideal' ? 'line' : 'metric',
       });
     }
   }
@@ -50,6 +55,24 @@ function makeChart(type = 'villager-efficiency') {
     title: type,
     options: { height: 280 },
     data: { labels: [0, 10], series },
+    bands: ['Alpha', 'Bravo'].flatMap(playerName => [
+      {
+        key: `${playerName}:Killed band`,
+        label: 'Killed',
+        playerName,
+        color: '#EF4444',
+        fromValues: [6, 6],
+        toValues: [6, 7],
+      },
+      {
+        key: `${playerName}:Missed band`,
+        label: 'Missed production',
+        playerName,
+        color: '#F59E0B',
+        fromValues: [6, 7],
+        toValues: [6, 8],
+      },
+    ]),
   };
 }
 
@@ -117,25 +140,61 @@ describe('Villager Efficiency player radios', () => {
     assert.deepEqual(visiblePlayers(chart), ['Bravo'], 'selected radio cannot be toggled off');
   });
 
-  test('includes cumulative debt step lines in the uncropped y-axis', () => {
+  test('includes downward debt bounds while crop preserves Target as the upper bound', () => {
     const chart = makeChart();
     chart.options.villagerTarget = 8;
-    chart.data.series.find(series =>
-      series.playerName === 'Alpha' && series.unitLabel === 'Missed production'
-    ).values = [0, 12];
+    chart.data.series
+      .filter(series => series.playerName === 'Bravo')
+      .forEach(series => { series._hidden = true; });
+    chart.bands.find(item =>
+      item.playerName === 'Alpha' && item.label === 'Killed'
+    ).fromValues = [6, -4];
+    chart.bands.find(item =>
+      item.playerName === 'Bravo' && item.label === 'Killed'
+    ).fromValues = [6, -40];
 
     recomputeVisibleGeometry(chart);
-    assert.ok(chart._geometry.yMax >= 12);
+    assert.ok(chart._geometry.yMin <= -4);
+    assert.ok(chart._geometry.yMin > -40, 'hidden-player bands must not affect geometry');
 
     chart.options.villagerCropToTarget = true;
     recomputeVisibleGeometry(chart);
     assert.equal(chart._geometry.yMax, 8);
+    assert.ok(chart._geometry.yMin <= -4);
+  });
+
+  test('keeps tooltip debt metrics positive when band coordinates are negative', () => {
+    const chart = makeChart();
+    chart.data.series
+      .filter(series => series.playerName === 'Bravo')
+      .forEach(series => { series._hidden = true; });
+    chart.data.series.find(series =>
+      series.playerName === 'Alpha' && series.unitLabel === 'Missed production'
+    ).values = [0, 7];
+    chart.data.series.find(series =>
+      series.playerName === 'Alpha' && series.unitLabel === 'Killed'
+    ).values = [0, 5];
+    chart.bands.find(item =>
+      item.playerName === 'Alpha' && item.label === 'Killed'
+    ).fromValues = [6, -4];
+
+    recomputeVisibleGeometry(chart);
+
+    const values = Object.fromEntries(chart._tooltipRows[1].map(row => [
+      chart.data.series[row.seriesIdx].unitLabel,
+      row.value,
+    ]));
+    assert.equal(values['Missed production'], 7);
+    assert.equal(values.Killed, 5);
   });
 
   test('previews the hovered player without changing the selected radio', () => {
     const canvas = document.querySelector('canvas');
     const timeline = makeTimeline(document, canvas);
     const chart = makeChart();
+    chart.bands.find(item =>
+      item.playerName === 'Bravo' && item.label === 'Killed'
+    ).fromValues = [6, -10];
 
     attachPlayerToggle(timeline, chart);
 
@@ -144,12 +203,14 @@ describe('Villager Efficiency player radios', () => {
     bravoRow.dispatchEvent(new window.Event('mouseenter'));
 
     assert.deepEqual(visiblePlayers(chart), ['Bravo']);
+    assert.ok(chart._geometry.yMin <= -10, 'hovered-player bands should control geometry');
     assert.equal(alphaRow.getAttribute('aria-checked'), 'true');
     assert.equal(bravoRow.getAttribute('aria-checked'), 'false');
 
     bravoRow.dispatchEvent(new window.Event('mouseleave'));
 
     assert.deepEqual(visiblePlayers(chart), ['Alpha']);
+    assert.ok(chart._geometry.yMin > -10, 'hidden-player bands should leave geometry');
     assert.equal(alphaRow.getAttribute('aria-checked'), 'true');
     assert.equal(bravoRow.getAttribute('aria-checked'), 'false');
   });

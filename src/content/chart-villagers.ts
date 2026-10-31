@@ -11,6 +11,7 @@ import {
 import type {
   BuildOrderItem,
   Chart,
+  ChartBand,
   ChartSeries,
   GameSummary,
   PlayerSummary,
@@ -345,6 +346,8 @@ function villagerEfficiencyValues(
   adjustIdealForDeaths: boolean,
 ): {
   idealValues: number[];
+  killedLowerValues: number[];
+  missedLowerValues: number[];
   missedValues: number[];
 } {
   const normalizedTarget = normalizeTarget(target);
@@ -354,6 +357,8 @@ function villagerEfficiencyValues(
     normalizedTarget,
     adjustIdealForDeaths,
   );
+  const killedLowerValues: number[] = [];
+  const missedLowerValues: number[] = [];
   const missedValues: number[] = [];
   let cumulativeMissed = 0;
   let maximumObservedShortfall = 0;
@@ -368,16 +373,19 @@ function villagerEfficiencyValues(
       cumulativeMissed += newMissedOpportunity;
     }
     maximumObservedShortfall = Math.max(maximumObservedShortfall, observedShortfall);
+    const missedLower = idealValues[index] - cumulativeMissed;
+    killedLowerValues.push(missedLower - killedValues[index]);
+    missedLowerValues.push(missedLower);
     missedValues.push(cumulativeMissed);
   }
-  return { idealValues, missedValues };
+  return { idealValues, killedLowerValues, missedLowerValues, missedValues };
 }
 
 function villagerEfficiencyMeta(target: number, adjustIdealForDeaths: boolean): string {
   const idealBehavior = adjustIdealForDeaths
     ? 'The dashed ideal plateaus at the target, drops with villager deaths, and recovers with later ideal production opportunities.'
     : 'The dashed ideal plateaus at the target.';
-  return `Actual living villagers versus uninterrupted production from every available producer. ${idealBehavior} Missed production accrues for unmatched production opportunities while actual living villagers are below the ${normalizeTarget(target)} target, pauses at or above it, and resumes if losses pull actual below target. Losses reopen accrual but do not count as missed production. Thin red and amber stair-step lines independently track cumulative villagers killed and counted missed production; dots mark each increase.`;
+  return `Actual living villagers versus uninterrupted production from every available producer. ${idealBehavior} Missed production accrues for unmatched production opportunities while actual living villagers are below the ${normalizeTarget(target)} target, pauses at or above it, and resumes if losses pull actual below target. Losses reopen accrual but do not count as missed production. Cumulative amber Missed Production and red Killed bands stack downward from Ideal; their lower edge can pass Actual or zero to preserve the full debt volume.`;
 }
 
 function sameTime(a: number, b: number): boolean {
@@ -514,6 +522,20 @@ export function applyVillagerEfficiencyTarget(chart: Chart, target: number): voi
     );
     ideal.values = values.idealValues;
     missed.values = values.missedValues;
+    const killedBand = chart.bands?.find(band =>
+      band.playerName === playerName && band.label === 'Killed'
+    );
+    if (killedBand) {
+      killedBand.fromValues = values.killedLowerValues;
+      killedBand.toValues = values.missedLowerValues;
+    }
+    const missedBand = chart.bands?.find(band =>
+      band.playerName === playerName && band.label === 'Missed production'
+    );
+    if (missedBand) {
+      missedBand.fromValues = values.missedLowerValues;
+      missedBand.toValues = values.idealValues;
+    }
   }
   chart.options = { ...(chart.options || {}), villagerTarget: normalizedTarget };
   chart.meta = villagerEfficiencyMeta(normalizedTarget, adjustIdealForDeaths);
@@ -561,6 +583,7 @@ export function buildVillagerEfficiencyCharts(
   if (!labels.length) return [];
 
   const series: ChartSeries[] = [];
+  const bands: ChartBand[] = [];
   for (const player of orderedPlayers(players, nativePlayerOrder)) {
     const playerIndex = players.indexOf(player);
     const records = recordsByPlayer.get(player) || [];
@@ -585,7 +608,12 @@ export function buildVillagerEfficiencyCharts(
     const idealCompletions = simulateIdealCompletions(player, records, windows, gameDuration);
     const rawIdealValues = cumulativeAtLabels(labels, idealCompletions)
       .map(value => value + initialVillagers);
-    const { idealValues, missedValues } = villagerEfficiencyValues(
+    const {
+      idealValues,
+      killedLowerValues,
+      missedLowerValues,
+      missedValues,
+    } = villagerEfficiencyValues(
       rawIdealValues,
       actualValues,
       killedValues,
@@ -630,7 +658,7 @@ export function buildVillagerEfficiencyCharts(
         color: MISSED_COLOR,
         baseColor: color,
         values: missedValues,
-        render: 'step',
+        render: 'metric',
         team: player.team,
       },
       {
@@ -641,8 +669,28 @@ export function buildVillagerEfficiencyCharts(
         color: KILLED_COLOR,
         baseColor: color,
         values: killedValues,
-        render: 'step',
+        render: 'metric',
         team: player.team,
+      },
+    );
+    bands.push(
+      {
+        key: `villager-efficiency:${keyBase}:killed-band`,
+        label: 'Killed',
+        playerName: name,
+        color: KILLED_COLOR,
+        fromValues: killedLowerValues,
+        toValues: missedLowerValues,
+        opacity: 0.18,
+      },
+      {
+        key: `villager-efficiency:${keyBase}:missed-band`,
+        label: 'Missed production',
+        playerName: name,
+        color: MISSED_COLOR,
+        fromValues: missedLowerValues,
+        toValues: idealValues,
+        opacity: 0.16,
       },
     );
   }
@@ -653,6 +701,7 @@ export function buildVillagerEfficiencyCharts(
     title: 'Villager Efficiency',
     meta: villagerEfficiencyMeta(DEFAULT_VILLAGER_TARGET, false),
     data: { labels, series },
+    bands,
     type: 'villager-efficiency',
     options: {
       height: 280,

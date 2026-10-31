@@ -1,7 +1,7 @@
 /**
  * Integration coverage for the Summary+ features added on this branch:
  * - Idle TC and K/D Cost details-table columns.
- * - Villager Efficiency ideal/actual lines and killed/missed-production step lines.
+ * - Villager Efficiency ideal/actual lines and Ideal-anchored debt bands.
  * - Summary+ chart option ordering.
  * - Army Count/Value toggle labels and Value-mode data for override-only PBGIDs.
  * - Range-selection legend deltas in Value mode are resource-weighted, not counts.

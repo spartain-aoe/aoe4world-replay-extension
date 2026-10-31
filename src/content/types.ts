@@ -141,7 +141,7 @@ export interface ChartSeries {
   _rawValues?: number[];
   _rawIdealValues?: number[];
   team?: number;
-  render?: 'line' | 'metric' | 'step';
+  render?: 'line' | 'metric';
   lineDash?: number[];
   _areaIcon?: {
     url: string;
@@ -160,6 +160,16 @@ export interface UnitUpgrade {
 export interface ChartData {
   labels: number[];
   series: ChartSeries[];
+}
+
+export interface ChartBand {
+  key: string;
+  label: string;
+  playerName: string;
+  color: string;
+  fromValues: number[];
+  toValues: number[];
+  opacity?: number;
 }
 
 export interface ChartGeometry {
@@ -188,6 +198,7 @@ export interface Chart {
     [key: string]: unknown;
   };
   data: ChartData;
+  bands?: ChartBand[];
   ageUps?: AgeUp[];
   _geometry?: ChartGeometry;
   _legendNodes?: Map<string, LegendNodeMeta>;

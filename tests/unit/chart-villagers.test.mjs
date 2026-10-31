@@ -86,6 +86,12 @@ function series(chart, playerName, unitLabel) {
   );
 }
 
+function band(chart, playerName, label) {
+  return chart.bands?.find(item =>
+    item.playerName === playerName && item.label === label
+  );
+}
+
 test('buildVillagerEfficiencyCharts separates missed production from villagers killed', () => {
   const summary = {
     duration: 60,
@@ -114,9 +120,62 @@ test('buildVillagerEfficiencyCharts separates missed production from villagers k
   assert.deepEqual(series(chart, 'Alpha', 'Ideal').values, [6, 6, 7, 7, 8, 8, 9]);
   assert.deepEqual(series(chart, 'Alpha', 'Missed production').values, [0, 0, 0, 0, 1, 1, 1]);
   assert.deepEqual(series(chart, 'Alpha', 'Killed').values, [0, 0, 0, 0, 0, 0, 1]);
-  assert.equal(series(chart, 'Alpha', 'Missed production').render, 'step');
-  assert.equal(series(chart, 'Alpha', 'Killed').render, 'step');
-  assert.equal(chart.bands, undefined);
+  assert.equal(series(chart, 'Alpha', 'Missed production').render, 'metric');
+  assert.equal(series(chart, 'Alpha', 'Killed').render, 'metric');
+  assert.deepEqual(chart.bands.filter(item => item.playerName === 'Alpha').map(item => ({
+    label: item.label,
+    from: item.fromValues,
+    to: item.toValues,
+  })), [
+    {
+      label: 'Killed',
+      from: [6, 6, 7, 7, 7, 7, 7],
+      to: [6, 6, 7, 7, 7, 7, 8],
+    },
+    {
+      label: 'Missed production',
+      from: [6, 6, 7, 7, 7, 7, 8],
+      to: [6, 6, 7, 7, 8, 8, 9],
+    },
+  ]);
+  assert.equal(
+    band(chart, 'Alpha', 'Killed').fromValues[4],
+    series(chart, 'Alpha', 'Actual').values[4],
+    'before the cap, cumulative debt exactly fills the Ideal–Actual gap',
+  );
+});
+
+test('cumulative debt remains below Ideal and can extend beneath Actual after the target', () => {
+  const summary = {
+    duration: 60,
+    players: [
+      player({
+        finished: [0, 0, 0, 0, 0, 0, 20, 50],
+        destroyed: [55],
+      }),
+    ],
+  };
+
+  const [chart] = buildVillagerEfficiencyCharts(summary, new Map());
+  applyVillagerEfficiencyTarget(chart, 8);
+
+  const actual = series(chart, 'Alpha', 'Actual');
+  const ideal = series(chart, 'Alpha', 'Ideal');
+  const missed = series(chart, 'Alpha', 'Missed production');
+  const killed = series(chart, 'Alpha', 'Killed');
+  const missedBand = band(chart, 'Alpha', 'Missed production');
+  const killedBand = band(chart, 'Alpha', 'Killed');
+  const last = chart.data.labels.length - 1;
+
+  assert.deepEqual(missedBand.toValues, ideal.values, 'amber never extends above Ideal');
+  assert.deepEqual(killedBand.toValues, missedBand.fromValues, 'red stays directly below amber');
+  assert.equal(missedBand.fromValues[last], ideal.values[last] - missed.values[last]);
+  assert.equal(
+    killedBand.fromValues[last],
+    ideal.values[last] - missed.values[last] - killed.values[last],
+  );
+  assert.ok(killedBand.fromValues[last] < actual.values[last]);
+  assert.ok(missed.values[last] > 0 && killed.values[last] > 0);
 });
 
 test('missed production does not recount a deficit after a later villager completion', () => {
@@ -380,12 +439,15 @@ test('ideal plateaus at the target without changing missed production', () => {
   assert.equal(series(chart, 'At Target', 'Ideal').values.at(-1), 140);
   assert.equal(series(chart, 'Over Target', 'Ideal').values.at(-1), 140);
   assert.equal(series(chart, 'At Target', 'Missed production').values.at(-1), 36);
-  assert.equal(series(chart, 'At Target', 'Missed production').render, 'step');
+  assert.equal(band(chart, 'At Target', 'Missed production').fromValues.at(-1), 104);
+  assert.equal(band(chart, 'At Target', 'Missed production').toValues.at(-1), 140);
 
   applyVillagerEfficiencyTarget(chart, 100);
   assert.equal(series(chart, 'At Target', 'Ideal').values.at(-1), 100);
   assert.equal(series(chart, 'At Target', 'Missed production').values.at(-1), 0);
   assert.equal(series(chart, 'Over Target', 'Ideal').values.at(-1), 100);
+  assert.equal(band(chart, 'At Target', 'Missed production').fromValues.at(-1), 100);
+  assert.equal(band(chart, 'At Target', 'Missed production').toValues.at(-1), 100);
 });
 
 test('missed production never decreases and stops accumulating at the target', () => {
@@ -472,6 +534,10 @@ test('death-adjusted ideal drops on losses and recovers on later ideal completio
   assert.equal(at(80), 8);
   assert.equal(at(90), 8, 'default ideal remains plateaued at target after a death');
   assert.equal(at(100), 8);
+  assert.equal(
+    band(chart, 'Alpha', 'Killed').toValues[chart.data.labels.indexOf(90)],
+    8,
+  );
 
   chart.options.villagerAdjustIdealForDeaths = true;
   applyVillagerEfficiencyTarget(chart, 8);
@@ -479,6 +545,11 @@ test('death-adjusted ideal drops on losses and recovers on later ideal completio
   assert.equal(at(80), 8);
   assert.equal(at(90), 7, 'death-adjusted ideal drops when a villager is killed');
   assert.equal(at(100), 8, 'the next ideal completion recovers toward target');
+  assert.equal(
+    band(chart, 'Alpha', 'Killed').toValues[chart.data.labels.indexOf(90)],
+    7,
+    'debt bands follow the recomputed displayed Ideal',
+  );
   assert.deepEqual(
     series(chart, 'Alpha', 'Missed production').values,
     missedBefore,

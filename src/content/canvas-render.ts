@@ -286,6 +286,32 @@ export function drawTimelineCanvasChart(
     ? riseBaselineY + (y - riseBaselineY) * animationProgress
     : y;
 
+  for (const band of chart.bands || []) {
+    const playerVisible = series.some(item =>
+      item.playerName === band.playerName && !item._hidden
+    );
+    if (!playerVisible || !band.fromValues.length || !band.toValues.length) continue;
+    const count = Math.min(labels.length, band.fromValues.length, band.toValues.length);
+    if (!count) continue;
+    const highlighted = isHighlightForPlayer(chart, band.playerName);
+    ctx.fillStyle = band.color;
+    ctx.globalAlpha = (band.opacity ?? 0.16) * (highlighted ? 1 : 0.25);
+    ctx.beginPath();
+    for (let i = 0; i < count; i++) {
+      const x = summaryScaleX(i, count, margin, plotW);
+      const y = animatedLineY(summaryScaleY(band.toValues[i], yMin, yMax, margin, plotH));
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    for (let i = count - 1; i >= 0; i--) {
+      const x = summaryScaleX(i, count, margin, plotW);
+      const y = animatedLineY(summaryScaleY(band.fromValues[i], yMin, yMax, margin, plotH));
+      ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fill();
+  }
+
   if (chart.type === 'army') {
     const collapsedPlayers = getCollapsedPlayers(chart);
     const drawnCollapsedPlayers = new Set<string>();
@@ -403,9 +429,8 @@ export function drawTimelineCanvasChart(
       if (!item.key) continue;
       ctx.strokeStyle = item.color;
       const highlighted = !chart.highlightKey || chart.highlightKey === item.key || (item.playerName && chart.highlightKey.startsWith('__player__:') && isHighlightForPlayer(chart, item.playerName));
-      const stepped = item.render === 'step';
-      ctx.globalAlpha = highlighted ? (stepped ? 0.72 : 1) : 0.18;
-      ctx.lineWidth = highlighted ? (stepped ? 1.5 : 2.25) : 1.25;
+      ctx.globalAlpha = highlighted ? 1 : 0.18;
+      ctx.lineWidth = highlighted ? 2.25 : 1.25;
       if (item.lineDash?.length) ctx.setLineDash(item.lineDash);
       ctx.beginPath();
       const values = item.values;
@@ -416,28 +441,9 @@ export function drawTimelineCanvasChart(
         const x = summaryScaleX(i, values.length, margin, plotW);
         const y = animatedLineY(ys[i]);
         if (!pathOpen) { ctx.moveTo(x, y); pathOpen = true; }
-        else {
-          if (stepped) ctx.lineTo(x, animatedLineY(ys[i - 1]));
-          ctx.lineTo(x, y);
-        }
+        else ctx.lineTo(x, y);
       }
       ctx.stroke();
-      if (stepped) {
-        ctx.fillStyle = item.color;
-        ctx.globalAlpha = highlighted ? 0.85 : 0.18;
-        for (let i = 1; i < values.length; i++) {
-          if (values[i] <= values[i - 1]) continue;
-          ctx.beginPath();
-          ctx.arc(
-            summaryScaleX(i, values.length, margin, plotW),
-            animatedLineY(ys[i]),
-            2.25,
-            0,
-            Math.PI * 2,
-          );
-          ctx.fill();
-        }
-      }
       ctx.setLineDash([]);
     }
   }
