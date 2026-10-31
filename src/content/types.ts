@@ -57,6 +57,7 @@ export interface BuildOrderItem {
   packed?: number[];
   unpacked?: number[];
   transformed?: number[];
+  unknown?: Record<string, NumberList>;
   count?: number;
 }
 

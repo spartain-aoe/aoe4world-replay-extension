@@ -188,7 +188,7 @@ export const pbgidUnitOverridesMap: Map<number, PbgidEntry> = new Map([
   [1905972, unit('Culverin', 'culverin', 'culverin-4')], // x2 culverin_4 [french]
   [2057897, unit('General Ship', 'general-ship', 'general-ship')], // x2 general_ship [rus]
   [2108164, unit('Battering Ram', 'battering-ram', 'battering-ram-2')], // x2 ram_2 [mongols]
-  [2121981, unit('Shinobi', 'shinobi', 'shinobi-2')], // x2 shinobi [japanese]
+  [2121981, Object.assign(unit('Shinobi', 'shinobi', 'shinobi-2'), { c: 100 })], // x2 shinobi [japanese]
   [2132733, unit('Desert Raider', 'desert-raider', 'desert-raider-2')], // x2 desert_rider_2 [ayyubids]
   [2138871, unit('Cannon', 'cannon', 'cannon-4')], // x2 cannon_4 [byzantines]
   [2659647, unit('Transport Ship', 'transport-ship', 'transport-ship-2')], // x2 transport [golden_horde]

@@ -13,6 +13,7 @@ import {
 const VILLAGER_PBGID = 710001;
 const MOUNTED_VILLAGER_PBGID = 710002;
 const GOLDEN_HORDE_VILLAGER_PBGID = 710003;
+const VIKING_VILLAGER_PBGID = 710004;
 const CAPITAL_TC_PBGID = 720001;
 const KINGS_PALACE_PBGID = 720002;
 const SONG_DYNASTY_PBGID = 158363;
@@ -20,6 +21,8 @@ const YUAN_DYNASTY_PBGID = 158364;
 const TUGHLAQ_VILLAGER_GOVERNOR_PBGID = 9001363;
 const TUGHLAQ_FORT_TIER_2_PBGID = 9003509;
 const FLOATING_GATE_PBGID = 2122035;
+const FALKR_SAGA_ACTIVATION_PBGID = 9006731;
+const FALKR_SAGA_ACTIVATION_ICON = 'icons/races/vikings/abilities/saga_falcon_activation';
 
 beforeEach(() => {
   villagerUnitMetaMap.set(VILLAGER_PBGID, {
@@ -38,6 +41,11 @@ beforeEach(() => {
     p: ['capital-town-center', 'town-center'],
     b: 2,
   });
+  villagerUnitMetaMap.set(VIKING_VILLAGER_PBGID, {
+    k: 'villager',
+    t: 22,
+    p: ['capital-town-center', 'town-center'],
+  });
   villagerProducerMetaMap.set(CAPITAL_TC_PBGID, { k: 'capital-town-center' });
   villagerProducerMetaMap.set(KINGS_PALACE_PBGID, { k: 'kings-palace', r: 1.1 });
 });
@@ -51,6 +59,7 @@ function player({
   name = 'Alpha',
   profileId = 1,
   civilization = 'english',
+  villagerPbgid = VILLAGER_PBGID,
   finished = [0, 0, 0, 0, 0, 0],
   destroyed = [],
   buildings = [{ pbgid: CAPITAL_TC_PBGID, constructed: [0] }],
@@ -65,7 +74,7 @@ function player({
       {
         type: 'Unit',
         icon: 'units/villager',
-        pbgid: VILLAGER_PBGID,
+        pbgid: villagerPbgid,
         finished,
         destroyed,
       },
@@ -324,6 +333,83 @@ test('a later Chinese dynasty ends the Song villager production bonus', () => {
 
   assert.equal(at(70), 10, 'the Song-speed villager queued before Yuan still finishes at 70 seconds');
   assert.equal(at(100), 11, 'new villagers return to a 20-second cadence after Yuan');
+});
+
+test('Falkr saga keeps an active Viking villager queue at 22 seconds then uses 20 seconds', () => {
+  const summary = {
+    duration: 590,
+    players: [
+      player({
+        civilization: 'vikings',
+        villagerPbgid: VIKING_VILLAGER_PBGID,
+        extraItems: [{
+          type: 'Unknown',
+          icon: '',
+          pbgid: FALKR_SAGA_ACTIVATION_PBGID,
+          unknown: { '7': [537] },
+        }],
+      }),
+    ],
+  };
+
+  const [chart] = buildVillagerEfficiencyCharts(summary, new Map());
+  const ideal = series(chart, 'Alpha', 'Ideal')._rawIdealValues;
+  const at = seconds => ideal[chart.data.labels.indexOf(seconds)];
+
+  assert.equal(at(540), 30);
+  assert.equal(at(550), 31, 'the queue already active at 537 still completes at 550');
+  assert.equal(at(560), 31);
+  assert.equal(at(570), 32, 'the next queue uses the exact 20-second Falkr train time');
+  assert.equal(at(590), 33);
+});
+
+test('Falkr saga icon fallback is Vikings-only and reads only unknown bucket 7', () => {
+  const sagaItem = {
+    type: 'Unknown',
+    icon: FALKR_SAGA_ACTIVATION_ICON,
+    unknown: { '7': [537] },
+  };
+  const summary = {
+    duration: 570,
+    players: [
+      player({
+        name: 'Icon Viking',
+        profileId: 1,
+        civilization: 'vikings',
+        villagerPbgid: VIKING_VILLAGER_PBGID,
+        extraItems: [sagaItem],
+      }),
+      player({
+        name: 'Wrong Bucket',
+        profileId: 2,
+        civilization: 'vikings',
+        villagerPbgid: VIKING_VILLAGER_PBGID,
+        extraItems: [{
+          ...sagaItem,
+          pbgid: FALKR_SAGA_ACTIVATION_PBGID,
+          unknown: { '8': [537] },
+        }],
+      }),
+      player({
+        name: 'Not Viking',
+        profileId: 3,
+        civilization: 'english',
+        villagerPbgid: VIKING_VILLAGER_PBGID,
+        extraItems: [{
+          ...sagaItem,
+          pbgid: FALKR_SAGA_ACTIVATION_PBGID,
+        }],
+      }),
+    ],
+  };
+
+  const [chart] = buildVillagerEfficiencyCharts(summary, new Map());
+  const at570 = playerName =>
+    series(chart, playerName, 'Ideal')._rawIdealValues[chart.data.labels.indexOf(570)];
+
+  assert.equal(at570('Icon Viking'), 32);
+  assert.equal(at570('Wrong Bucket'), 31);
+  assert.equal(at570('Not Viking'), 31);
 });
 
 test('French ideal production applies the Town Center work-rate bonus for the current Age', () => {

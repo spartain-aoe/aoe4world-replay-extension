@@ -58,6 +58,9 @@ const TUGHLAQ_VILLAGER_GOVERNOR_PBGID = 9001363;
 const TUGHLAQ_FORT_TIER_2_PBGID = 9003509;
 const TUGHLAQ_FORT_TIER_3_PBGID = 9003510;
 const FLOATING_GATE_PBGID = 2122035;
+const FALKR_SAGA_ACTIVATION_PBGID = 9006731;
+const FALKR_SAGA_ACTIVATION_ICON = 'icons/races/vikings/abilities/saga_falcon_activation';
+const FALKR_VILLAGER_TRAIN_TIME_REDUCTION = 2;
 const STANDARD_VILLAGER_TRAIN_TIME = 20;
 const YORISHIRO_TOWN_CENTER_RATE = 1.25;
 const EPSILON = 1e-7;
@@ -166,6 +169,22 @@ function initialMountedVillagers(records: VillagerRecord[]): number {
   return records
     .filter(record => record.meta && isMountedVillager(record.meta))
     .reduce((total, record) => total + record.finished.filter(time => time <= 0).length, 0);
+}
+
+function falkrSagaActivationTime(player: PlayerSummary): number | null {
+  const civilization = `${player.civilization || ''} ${player.civilizationAttrib || ''}`;
+  if (!/\bvikings?\b/i.test(civilization)) return null;
+  const times = (player.buildOrder || [])
+    .filter(item =>
+      item.type === 'Unknown' &&
+      (
+        Number(item.pbgid) === FALKR_SAGA_ACTIVATION_PBGID ||
+        String(item.icon || '').toLowerCase() === FALKR_SAGA_ACTIVATION_ICON
+      )
+    )
+    .flatMap(item => numericArray(item.unknown?.['7']))
+    .sort((a, b) => a - b);
+  return times[0] ?? null;
 }
 
 function villagerProductionRateChanges(player: PlayerSummary): ProductionRateChange[] {
@@ -413,6 +432,7 @@ function simulateIdealCompletions(
   }));
   const tributaryTimes = jinTributaryEstablishedTimes(player).filter(time => time <= gameDuration);
   const rateChanges = villagerProductionRateChanges(player);
+  const falkrSagaAt = falkrSagaActivationTime(player);
   const yorishiro = inferredYorishiroProducer(player, records, windows);
   let tributaryIndex = 0;
   let mountedCap = 20;
@@ -440,7 +460,13 @@ function simulateIdealCompletions(
     const dynamicRate = productionRateAt(rateChanges, time)
       * frenchVillagerProductionRate(player, time, chosen.t)
       * yorishiroRate;
-    queue.nextCompletion = time + chosen.t / (queue.rate * dynamicRate);
+    const trainTime = Math.max(
+      1,
+      chosen.t - (falkrSagaAt != null && time >= falkrSagaAt - EPSILON
+        ? FALKR_VILLAGER_TRAIN_TIME_REDUCTION
+        : 0),
+    );
+    queue.nextCompletion = time + trainTime / (queue.rate * dynamicRate);
   };
 
   while (true) {

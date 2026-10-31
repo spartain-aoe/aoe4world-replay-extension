@@ -8,12 +8,14 @@ import {
   formatKdCostRatio,
   installDetailsTableMetrics,
 } from '../../src/content/details-metrics.ts';
-import { pbgidUnitsMap } from '../../src/content/pbgid-map.ts';
+import { pbgidUnitsMap, resolveUnitByPbgid } from '../../src/content/pbgid-map.ts';
 
 const SPEARMAN_PBGID = 990101;
 const KNIGHT_PBGID = 990102;
 const UNKNOWN_PBGID = 990103;
 const FREE_MILITIA_PBGID = 9005329;
+const PAID_JAPANESE_SHINOBI_PBGID = 2121981;
+const FREE_SHINOBI_PBGID = 2151449;
 
 let previousEntries;
 
@@ -22,10 +24,14 @@ beforeEach(() => {
     [SPEARMAN_PBGID, pbgidUnitsMap.get(SPEARMAN_PBGID)],
     [KNIGHT_PBGID, pbgidUnitsMap.get(KNIGHT_PBGID)],
     [UNKNOWN_PBGID, pbgidUnitsMap.get(UNKNOWN_PBGID)],
+    [PAID_JAPANESE_SHINOBI_PBGID, pbgidUnitsMap.get(PAID_JAPANESE_SHINOBI_PBGID)],
+    [FREE_SHINOBI_PBGID, pbgidUnitsMap.get(FREE_SHINOBI_PBGID)],
   ]);
   pbgidUnitsMap.set(SPEARMAN_PBGID, { n: 'Spearman', k: 'spearman', c: 50 });
   pbgidUnitsMap.set(KNIGHT_PBGID, { n: 'Knight', k: 'knight', c: 200 });
+  pbgidUnitsMap.set(FREE_SHINOBI_PBGID, { n: 'Shinobi', k: 'shinobi', c: 0 });
   pbgidUnitsMap.delete(UNKNOWN_PBGID);
+  pbgidUnitsMap.delete(PAID_JAPANESE_SHINOBI_PBGID);
 });
 
 afterEach(() => {
@@ -158,6 +164,25 @@ test('authoritative zero-cost units remain valid K/D Cost events', () => {
   assert.equal(alpha.killedUnitCost, 0);
   assert.equal(alpha.lostUnitCost, 100);
   assert.equal(alpha.kdCostUnavailableReason, null);
+});
+
+test('paid Japanese Shinobi destructions use 50 food plus 50 gold', () => {
+  const summary = oneVsOneSummary();
+  summary.players[0]._stats.elitekill = 8;
+  summary.players[1]._stats.edeaths = 8;
+  summary.players[1].buildOrder = [{
+    type: 'Unit',
+    icon: 'icons/races/japanese/units/shinobi',
+    pbgid: PAID_JAPANESE_SHINOBI_PBGID,
+    destroyed: [15, 16, 17, 18, 19, 20, 21, 22],
+  }];
+
+  const [alpha] = calculateDetailsPlayerMetrics(summary);
+  assert.equal(resolveUnitByPbgid(PAID_JAPANESE_SHINOBI_PBGID)?.c, 100);
+  assert.equal(resolveUnitByPbgid(FREE_SHINOBI_PBGID)?.c, 0);
+  assert.equal(alpha.killedUnitCost, 800);
+  assert.equal(alpha.kdCostUnavailableReason, null);
+  assert.equal(alpha.kdCostApproximateReason, null);
 });
 
 test('team games do not invent per-player kill attribution', () => {
