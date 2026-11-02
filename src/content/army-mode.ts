@@ -1,5 +1,6 @@
 import { drawTimelineCanvasChart } from './canvas-render.ts';
 import { recomputeVisibleGeometry } from './interactions.ts';
+import { formatArmyMetric, formatArmySummary } from './legend-live.ts';
 import type { Chart, ChartSeries, TimelineElements } from './types.ts';
 
 export type ArmyMode = 'count' | 'value';
@@ -25,13 +26,9 @@ export function setActiveArmyMode(mode: ArmyMode): void {
   try {
     storage?.setItem(STORAGE_KEY, mode);
   } catch {
-    // ignored
   }
 }
 
-// Swap each series' active `values` to the count- or value-mode array, then
-// recompute stacking, geometry, and tooltip-row caches so the chart redraws
-// correctly under the new mode.
 export function applyArmyModeToChart(chart: Chart, mode: ArmyMode): void {
   if (chart.type !== 'army') return;
   chart.options = { ...(chart.options || {}), armyMode: mode };
@@ -50,9 +47,6 @@ export function applyArmyModeToChart(chart: Chart, mode: ArmyMode): void {
   recomputeVisibleGeometry(chart);
 }
 
-// True only when at least one series has non-zero value-mode data. Toggle stays
-// disabled (but visible) when unit-cost data hasn't loaded yet so users see the
-// feature without it doing nothing on click.
 export function chartHasValueData(chart: Chart): boolean {
   if (chart.type !== 'army') return false;
   for (const series of chart.data.series as ChartSeries[]) {
@@ -70,11 +64,18 @@ function refreshArmyLegendTotals(chart: Chart, mode: ArmyMode): void {
     if (!series.key) continue;
     const node = nodes.get(series.key);
     if (!node || series.key.startsWith('__summary__') || !('totalEl' in node)) continue;
-    const total = mode === 'value'
-      ? `${Math.round(series._valueTotal || 0).toLocaleString()} res`
-      : Math.round(series.createdTotal || 0).toLocaleString();
+    const count = series.createdTotal || 0;
+    const total = formatArmyMetric(
+      mode === 'value' ? (series._valueTotal || 0) : count,
+      count,
+      mode === 'value',
+    );
     if (node.totalEl.textContent !== total) node.totalEl.textContent = total;
-    node.summaryTotal = mode === 'value' ? (series._valueTotal || 0) : (series.createdTotal || 0);
+  }
+  for (const [key, node] of nodes) {
+    if (!key.startsWith('__summary__') || !('units' in node)) continue;
+    const text = formatArmySummary(node.units, mode === 'value');
+    if (node.summaryLabelEl.textContent !== text) node.summaryLabelEl.textContent = text;
   }
 }
 
@@ -84,7 +85,6 @@ export function detachArmyModeToggle(timeline: TimelineElements): void {
   const existing = timeline.__aoe4ArmyModeToggle;
   if (existing && existing.parentElement) existing.parentElement.removeChild(existing);
   timeline.__aoe4ArmyModeToggle = null;
-  // Also nuke any orphans that may have been left behind across re-renders.
   const orphans = timeline.chartBox?.querySelectorAll(`.${TOGGLE_CLASS}`);
   if (orphans) {
     for (const node of orphans) node.parentElement?.removeChild(node);

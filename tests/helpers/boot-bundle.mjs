@@ -80,8 +80,10 @@ export function bootBundle({ html, url, sendMessageImpl, initial = {} } = {}) {
   ctx.self = ctx;
   vm.createContext(ctx);
 
-  const code = readFileSync(path.join(ROOT, 'chrome-extension', 'content.js'), 'utf8');
-  vm.runInContext(code, ctx, { filename: 'content.js' });
+  for (const filename of ['combat-metrics.js', 'content.js']) {
+    const code = readFileSync(path.join(ROOT, 'chrome-extension', filename), 'utf8');
+    vm.runInContext(code, ctx, { filename });
+  }
 
   return {
     ctx, window, document, chrome, messages, observers, storageData, fanout,

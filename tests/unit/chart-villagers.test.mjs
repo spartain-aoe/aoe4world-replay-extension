@@ -1,0 +1,720 @@
+import { afterEach, beforeEach, test } from 'node:test';
+import assert from 'node:assert/strict';
+
+import {
+  applyVillagerEfficiencyTarget,
+  buildVillagerEfficiencyCharts,
+} from '../../src/content/chart-villagers.ts';
+import {
+  villagerProducerMetaMap,
+  villagerUnitMetaMap,
+} from '../../src/content/pbgid-map.ts';
+
+const VILLAGER_PBGID = 710001;
+const MOUNTED_VILLAGER_PBGID = 710002;
+const GOLDEN_HORDE_VILLAGER_PBGID = 710003;
+const VIKING_VILLAGER_PBGID = 710004;
+const CAPITAL_TC_PBGID = 720001;
+const KINGS_PALACE_PBGID = 720002;
+const SONG_DYNASTY_PBGID = 158363;
+const YUAN_DYNASTY_PBGID = 158364;
+const TUGHLAQ_VILLAGER_GOVERNOR_PBGID = 9001363;
+const TUGHLAQ_FORT_TIER_2_PBGID = 9003509;
+const FLOATING_GATE_PBGID = 2122035;
+const FALKR_SAGA_ACTIVATION_PBGID = 9006731;
+const FALKR_SAGA_ACTIVATION_ICON = 'icons/races/vikings/abilities/saga_falcon_activation';
+
+beforeEach(() => {
+  villagerUnitMetaMap.set(VILLAGER_PBGID, {
+    k: 'villager',
+    t: 20,
+    p: ['capital-town-center', 'town-center', 'kings-palace'],
+  });
+  villagerUnitMetaMap.set(MOUNTED_VILLAGER_PBGID, {
+    k: 'mounted-villager',
+    t: 35,
+    p: ['capital-town-center', 'town-center'],
+  });
+  villagerUnitMetaMap.set(GOLDEN_HORDE_VILLAGER_PBGID, {
+    k: 'villager',
+    t: 37,
+    p: ['capital-town-center', 'town-center'],
+    b: 2,
+  });
+  villagerUnitMetaMap.set(VIKING_VILLAGER_PBGID, {
+    k: 'villager',
+    t: 22,
+    p: ['capital-town-center', 'town-center'],
+  });
+  villagerProducerMetaMap.set(CAPITAL_TC_PBGID, { k: 'capital-town-center' });
+  villagerProducerMetaMap.set(KINGS_PALACE_PBGID, { k: 'kings-palace', r: 1.1 });
+});
+
+afterEach(() => {
+  villagerUnitMetaMap.clear();
+  villagerProducerMetaMap.clear();
+});
+
+function player({
+  name = 'Alpha',
+  profileId = 1,
+  civilization = 'english',
+  villagerPbgid = VILLAGER_PBGID,
+  finished = [0, 0, 0, 0, 0, 0],
+  destroyed = [],
+  buildings = [{ pbgid: CAPITAL_TC_PBGID, constructed: [0] }],
+  extraItems = [],
+} = {}) {
+  return {
+    name,
+    profileId,
+    civilization,
+    team: profileId,
+    buildOrder: [
+      {
+        type: 'Unit',
+        icon: 'units/villager',
+        pbgid: villagerPbgid,
+        finished,
+        destroyed,
+      },
+      ...buildings.map(building => ({
+        type: 'Building',
+        icon: 'buildings/producer',
+        destroyed: [],
+        ...building,
+      })),
+      ...extraItems,
+    ],
+  };
+}
+
+function series(chart, playerName, unitLabel) {
+  return chart.data.series.find(item =>
+    item.playerName === playerName && item.unitLabel === unitLabel
+  );
+}
+
+function band(chart, playerName, label) {
+  return chart.bands?.find(item =>
+    item.playerName === playerName && item.label === label
+  );
+}
+
+test('buildVillagerEfficiencyCharts separates missed production from villagers killed', () => {
+  const summary = {
+    duration: 60,
+    players: [
+      player({
+        finished: [0, 0, 0, 0, 0, 0, 20, 50],
+        destroyed: [55],
+      }),
+      player({
+        name: 'Bravo',
+        profileId: 2,
+        finished: [0, 0, 0, 0, 0, 0, 20, 40, 60],
+      }),
+    ],
+  };
+
+  const [chart] = buildVillagerEfficiencyCharts(summary, new Map([
+    ['alpha', '#0162FF'],
+    ['bravo', '#F60000'],
+  ]));
+
+  assert.equal(chart.title, 'Villager Production');
+  assert.equal(chart.type, 'villager-efficiency');
+  assert.deepEqual(chart.data.labels, [0, 10, 20, 30, 40, 50, 60]);
+  assert.deepEqual(series(chart, 'Alpha', 'Actual').values, [6, 6, 7, 7, 7, 8, 7]);
+  assert.deepEqual(series(chart, 'Alpha', 'Ideal').values, [6, 6, 7, 7, 8, 8, 9]);
+  assert.deepEqual(series(chart, 'Alpha', 'Missed production').values, [0, 0, 0, 0, 1, 1, 1]);
+  assert.deepEqual(series(chart, 'Alpha', 'Killed').values, [0, 0, 0, 0, 0, 0, 1]);
+  assert.equal(series(chart, 'Alpha', 'Missed production').render, 'metric');
+  assert.equal(series(chart, 'Alpha', 'Killed').render, 'metric');
+  assert.deepEqual(chart.bands.filter(item => item.playerName === 'Alpha').map(item => ({
+    label: item.label,
+    from: item.fromValues,
+    to: item.toValues,
+  })), [
+    {
+      label: 'Killed',
+      from: [6, 6, 7, 7, 7, 7, 7],
+      to: [6, 6, 7, 7, 7, 7, 8],
+    },
+    {
+      label: 'Missed production',
+      from: [6, 6, 7, 7, 7, 7, 8],
+      to: [6, 6, 7, 7, 8, 8, 9],
+    },
+  ]);
+  assert.equal(
+    band(chart, 'Alpha', 'Killed').fromValues[4],
+    series(chart, 'Alpha', 'Actual').values[4],
+    'before the cap, cumulative debt exactly fills the Ideal–Actual gap',
+  );
+});
+
+test('cumulative debt remains below Ideal and can extend beneath Actual after the target', () => {
+  const summary = {
+    duration: 60,
+    players: [
+      player({
+        finished: [0, 0, 0, 0, 0, 0, 20, 50],
+        destroyed: [55],
+      }),
+    ],
+  };
+
+  const [chart] = buildVillagerEfficiencyCharts(summary, new Map());
+  applyVillagerEfficiencyTarget(chart, 8);
+
+  const actual = series(chart, 'Alpha', 'Actual');
+  const ideal = series(chart, 'Alpha', 'Ideal');
+  const missed = series(chart, 'Alpha', 'Missed production');
+  const killed = series(chart, 'Alpha', 'Killed');
+  const missedBand = band(chart, 'Alpha', 'Missed production');
+  const killedBand = band(chart, 'Alpha', 'Killed');
+  const last = chart.data.labels.length - 1;
+
+  assert.deepEqual(missedBand.toValues, ideal.values, 'amber never extends above Ideal');
+  assert.deepEqual(killedBand.toValues, missedBand.fromValues, 'red stays directly below amber');
+  assert.equal(missedBand.fromValues[last], ideal.values[last] - missed.values[last]);
+  assert.equal(
+    killedBand.fromValues[last],
+    ideal.values[last] - missed.values[last] - killed.values[last],
+  );
+  assert.ok(killedBand.fromValues[last] < actual.values[last]);
+  assert.ok(missed.values[last] > 0 && killed.values[last] > 0);
+});
+
+test('missed production does not recount a deficit after a later villager completion', () => {
+  const summary = {
+    duration: 60,
+    players: [
+      player({
+        finished: [0, 0, 0, 0, 0, 0, 50],
+      }),
+    ],
+  };
+
+  const [chart] = buildVillagerEfficiencyCharts(summary, new Map());
+
+  assert.deepEqual(
+    series(chart, 'Alpha', 'Missed production').values,
+    [0, 0, 1, 1, 2, 2, 2],
+  );
+});
+
+test('ideal production includes every available producer with its own speed', () => {
+  const summary = {
+    duration: 140,
+    players: [
+      player({
+        buildings: [
+          { pbgid: CAPITAL_TC_PBGID, constructed: [0] },
+          { pbgid: KINGS_PALACE_PBGID, constructed: [100] },
+        ],
+      }),
+    ],
+  };
+
+  const [chart] = buildVillagerEfficiencyCharts(summary, new Map());
+  const ideal = series(chart, 'Alpha', 'Ideal').values;
+
+  assert.equal(ideal.at(-1), 15, '6 initial + 7 capital TC + 2 King’s Palace villagers');
+});
+
+test('packed producers do not add ideal production until they are unpacked', () => {
+  const summary = {
+    duration: 80,
+    players: [
+      player({
+        buildings: [{
+          pbgid: CAPITAL_TC_PBGID,
+          constructed: [0],
+          packed: [25],
+          unpacked: [65],
+        }],
+      }),
+    ],
+  };
+
+  const [chart] = buildVillagerEfficiencyCharts(summary, new Map());
+  const ideal = series(chart, 'Alpha', 'Ideal').values;
+
+  assert.equal(ideal.at(-1), 7, 'only the villager completed before packing should count');
+});
+
+test('Golden Horde ideal production counts two villagers per 37-second batch', () => {
+  const summary = {
+    duration: 74,
+    players: [{
+      name: 'Golden Horde',
+      profileId: 1,
+      civilization: 'golden_horde',
+      team: 0,
+      buildOrder: [
+        {
+          type: 'Unit',
+          icon: 'units/villager',
+          pbgid: GOLDEN_HORDE_VILLAGER_PBGID,
+          finished: [0, 0, 0, 0, 0],
+          destroyed: [],
+        },
+        {
+          type: 'Building',
+          icon: 'buildings/town_centre_capitol',
+          pbgid: CAPITAL_TC_PBGID,
+          constructed: [0],
+          destroyed: [],
+        },
+      ],
+    }],
+  };
+
+  const [chart] = buildVillagerEfficiencyCharts(summary, new Map());
+  const ideal = series(chart, 'Golden Horde', 'Ideal').values;
+
+  assert.equal(ideal.at(-1), 9, '5 initial + two batches of 2 villagers');
+});
+
+test('China Song Dynasty speeds up newly queued villagers without changing an active queue', () => {
+  const summary = {
+    duration: 100,
+    players: [
+      player({
+        civilization: 'chinese',
+        extraItems: [{
+          type: 'Unknown',
+          icon: 'icons/races/chinese/dynasties/song',
+          pbgid: SONG_DYNASTY_PBGID,
+          finished: [25],
+        }],
+      }),
+    ],
+  };
+
+  const [chart] = buildVillagerEfficiencyCharts(summary, new Map());
+  const ideal = series(chart, 'Alpha', 'Ideal').values;
+  const at = seconds => ideal[chart.data.labels.indexOf(seconds)];
+
+  assert.equal(at(30), 7, 'the villager queued before Song still completes at 40 seconds');
+  assert.equal(at(60), 9, 'the next villager completes 15 seconds after the 40-second completion');
+  assert.equal(at(100), 12, 'Song sustains a 15-second villager cadence');
+});
+
+test('a later Chinese dynasty ends the Song villager production bonus', () => {
+  const summary = {
+    duration: 100,
+    players: [
+      player({
+        civilization: 'chinese',
+        extraItems: [
+          {
+            type: 'Unknown',
+            icon: 'icons/races/chinese/dynasties/song',
+            pbgid: SONG_DYNASTY_PBGID,
+            finished: [25],
+          },
+          {
+            type: 'Unknown',
+            icon: 'icons/races/chinese/dynasties/yuan',
+            pbgid: YUAN_DYNASTY_PBGID,
+            finished: [65],
+          },
+        ],
+      }),
+    ],
+  };
+
+  const [chart] = buildVillagerEfficiencyCharts(summary, new Map());
+  const ideal = series(chart, 'Alpha', 'Ideal').values;
+  const at = seconds => ideal[chart.data.labels.indexOf(seconds)];
+
+  assert.equal(at(70), 10, 'the Song-speed villager queued before Yuan still finishes at 70 seconds');
+  assert.equal(at(100), 11, 'new villagers return to a 20-second cadence after Yuan');
+});
+
+test('Falkr saga keeps an active Viking villager queue at 22 seconds then uses 20 seconds', () => {
+  const summary = {
+    duration: 590,
+    players: [
+      player({
+        civilization: 'vikings',
+        villagerPbgid: VIKING_VILLAGER_PBGID,
+        extraItems: [{
+          type: 'Unknown',
+          icon: '',
+          pbgid: FALKR_SAGA_ACTIVATION_PBGID,
+          unknown: { '7': [537] },
+        }],
+      }),
+    ],
+  };
+
+  const [chart] = buildVillagerEfficiencyCharts(summary, new Map());
+  const ideal = series(chart, 'Alpha', 'Ideal')._rawIdealValues;
+  const at = seconds => ideal[chart.data.labels.indexOf(seconds)];
+
+  assert.equal(at(540), 30);
+  assert.equal(at(550), 31, 'the queue already active at 537 still completes at 550');
+  assert.equal(at(560), 31);
+  assert.equal(at(570), 32, 'the next queue uses the exact 20-second Falkr train time');
+  assert.equal(at(590), 33);
+});
+
+test('Falkr saga icon fallback is Vikings-only and reads only unknown bucket 7', () => {
+  const sagaItem = {
+    type: 'Unknown',
+    icon: FALKR_SAGA_ACTIVATION_ICON,
+    unknown: { '7': [537] },
+  };
+  const summary = {
+    duration: 570,
+    players: [
+      player({
+        name: 'Icon Viking',
+        profileId: 1,
+        civilization: 'vikings',
+        villagerPbgid: VIKING_VILLAGER_PBGID,
+        extraItems: [sagaItem],
+      }),
+      player({
+        name: 'Wrong Bucket',
+        profileId: 2,
+        civilization: 'vikings',
+        villagerPbgid: VIKING_VILLAGER_PBGID,
+        extraItems: [{
+          ...sagaItem,
+          pbgid: FALKR_SAGA_ACTIVATION_PBGID,
+          unknown: { '8': [537] },
+        }],
+      }),
+      player({
+        name: 'Not Viking',
+        profileId: 3,
+        civilization: 'english',
+        villagerPbgid: VIKING_VILLAGER_PBGID,
+        extraItems: [{
+          ...sagaItem,
+          pbgid: FALKR_SAGA_ACTIVATION_PBGID,
+        }],
+      }),
+    ],
+  };
+
+  const [chart] = buildVillagerEfficiencyCharts(summary, new Map());
+  const at570 = playerName =>
+    series(chart, playerName, 'Ideal')._rawIdealValues[chart.data.labels.indexOf(570)];
+
+  assert.equal(at570('Icon Viking'), 32);
+  assert.equal(at570('Wrong Bucket'), 31);
+  assert.equal(at570('Not Viking'), 31);
+});
+
+test('French ideal production applies the Town Center work-rate bonus for the current Age', () => {
+  const summary = {
+    duration: 50,
+    players: [
+      {
+        ...player({ civilization: 'french' }),
+        analysis: {
+          landmarks: [{ gameTime: 0, newAge: 3 }],
+        },
+      },
+    ],
+  };
+
+  const [chart] = buildVillagerEfficiencyCharts(summary, new Map());
+
+  assert.equal(
+    series(chart, 'Alpha', 'Ideal').values.at(-1),
+    9,
+    'Castle Age French completes three villagers in 50 seconds at +20% work rate',
+  );
+});
+
+test('Tughlaq villager governor rate follows the governed fort tier for newly queued villagers', () => {
+  const summary = {
+    duration: 100,
+    players: [
+      player({
+        civilization: 'tughlaq_dynasty',
+        extraItems: [
+          {
+            type: 'Unknown',
+            icon: 'icons/races/tughluq/governor_portraits/governor_villager',
+            pbgid: TUGHLAQ_VILLAGER_GOVERNOR_PBGID,
+            finished: [0],
+          },
+          {
+            type: 'Upgrade',
+            icon: 'icons/races/tughluq/upgrades/tughluqabad_fort_tier2',
+            pbgid: TUGHLAQ_FORT_TIER_2_PBGID,
+            finished: [45],
+          },
+        ],
+      }),
+    ],
+  };
+
+  const [chart] = buildVillagerEfficiencyCharts(summary, new Map());
+
+  assert.equal(
+    series(chart, 'Alpha', 'Ideal').values.at(-1),
+    12,
+    'tier 1 gives +15% and tier 2 gives +30% without rescheduling an active villager',
+  );
+});
+
+test('Japanese ideal production infers a Town Center Yorishiro from sustained lone-TC cadence', () => {
+  const summary = {
+    duration: 150,
+    players: [
+      {
+        ...player({
+          civilization: 'japanese',
+          finished: [0, 0, 0, 0, 0, 0, 20, 40, 60, 80, 100, 116, 132, 148],
+        }),
+        analysis: {
+          landmarks: [{
+            pbgid: FLOATING_GATE_PBGID,
+            gameTime: 50,
+            newAge: 3,
+          }],
+        },
+      },
+    ],
+  };
+
+  const [chart] = buildVillagerEfficiencyCharts(summary, new Map());
+
+  assert.equal(
+    series(chart, 'Alpha', 'Ideal')._rawIdealValues.at(-1),
+    14,
+    'three consecutive 16-second completions identify the +25% Yorishiro work rate',
+  );
+});
+
+test('ideal plateaus at the target without changing missed production', () => {
+  const continuousToTarget = [
+    0, 0, 0, 0, 0, 0,
+    ...Array.from({ length: 114 }, (_, index) => (index + 1) * 20),
+  ];
+  const summary = {
+    duration: 3000,
+    players: [
+      player({ name: 'At Target', profileId: 1, finished: continuousToTarget }),
+      player({
+        name: 'Over Target',
+        profileId: 2,
+        finished: new Array(125).fill(0),
+      }),
+    ],
+  };
+
+  const [chart] = buildVillagerEfficiencyCharts(summary, new Map());
+
+  assert.equal(series(chart, 'At Target', 'Ideal').values.at(-1), 120);
+  assert.equal(series(chart, 'Over Target', 'Ideal').values.at(-1), 120);
+  assert.equal(series(chart, 'At Target', 'Ideal')._rawIdealValues.at(-1), 156);
+  assert.equal(series(chart, 'Over Target', 'Ideal')._rawIdealValues.at(-1), 275);
+  assert.equal(series(chart, 'At Target', 'Missed production').values.at(-1), 0);
+
+  applyVillagerEfficiencyTarget(chart, 140);
+  assert.equal(series(chart, 'At Target', 'Ideal').values.at(-1), 140);
+  assert.equal(series(chart, 'Over Target', 'Ideal').values.at(-1), 140);
+  assert.equal(series(chart, 'At Target', 'Missed production').values.at(-1), 36);
+  assert.equal(band(chart, 'At Target', 'Missed production').fromValues.at(-1), 104);
+  assert.equal(band(chart, 'At Target', 'Missed production').toValues.at(-1), 140);
+
+  applyVillagerEfficiencyTarget(chart, 100);
+  assert.equal(series(chart, 'At Target', 'Ideal').values.at(-1), 100);
+  assert.equal(series(chart, 'At Target', 'Missed production').values.at(-1), 0);
+  assert.equal(series(chart, 'Over Target', 'Ideal').values.at(-1), 100);
+  assert.equal(band(chart, 'At Target', 'Missed production').fromValues.at(-1), 100);
+  assert.equal(band(chart, 'At Target', 'Missed production').toValues.at(-1), 100);
+});
+
+test('missed production never decreases and stops accumulating at the target', () => {
+  const summary = {
+    duration: 80,
+    players: [
+      player({
+        finished: [0, 0, 0, 0, 0, 0, 40, 60, 80],
+      }),
+    ],
+  };
+
+  const [chart] = buildVillagerEfficiencyCharts(summary, new Map());
+  applyVillagerEfficiencyTarget(chart, 8);
+
+  const missed = series(chart, 'Alpha', 'Missed production').values;
+  const ideal = series(chart, 'Alpha', 'Ideal').values;
+
+  assert.deepEqual(missed, [0, 0, 1, 1, 1, 1, 1, 1, 1]);
+  assert.equal(ideal[chart.data.labels.indexOf(40)], 8, 'uninterrupted production reaches the target');
+  assert.equal(ideal.at(-1), 8, 'displayed ideal plateaus at the target');
+});
+
+test('missed production keeps accruing while actual remains below the target', () => {
+  const summary = {
+    duration: 80,
+    players: [
+      player({
+        finished: [0, 0, 0, 0, 0, 0, 40],
+      }),
+    ],
+  };
+
+  const [chart] = buildVillagerEfficiencyCharts(summary, new Map());
+  applyVillagerEfficiencyTarget(chart, 8);
+
+  assert.deepEqual(
+    series(chart, 'Alpha', 'Missed production').values,
+    [0, 0, 1, 1, 1, 1, 2, 2, 3],
+  );
+});
+
+test('villager losses reopen target accrual without counting as missed production', () => {
+  const summary = {
+    duration: 100,
+    players: [
+      player({
+        finished: [0, 0, 0, 0, 0, 0, 40, 60],
+        destroyed: [90, 90],
+      }),
+    ],
+  };
+
+  const [chart] = buildVillagerEfficiencyCharts(summary, new Map());
+  applyVillagerEfficiencyTarget(chart, 8);
+
+  const missed = series(chart, 'Alpha', 'Missed production').values;
+  const at = seconds => missed[chart.data.labels.indexOf(seconds)];
+
+  assert.equal(at(20), 1, 'missed production accrues while actual living is below target');
+  assert.equal(at(80), 1, 'new idle time is ignored while actual living is at target');
+  assert.equal(at(90), 1, 'villager losses reopen accrual but do not increment missed production');
+  assert.equal(at(100), 2, 'the next unmatched ideal completion increments while actual is below target');
+});
+
+test('death-adjusted ideal drops on losses and recovers on later ideal completions', () => {
+  const summary = {
+    duration: 100,
+    players: [
+      player({
+        finished: [0, 0, 0, 0, 0, 0, 20, 40],
+        destroyed: [90],
+      }),
+    ],
+  };
+
+  const [chart] = buildVillagerEfficiencyCharts(summary, new Map());
+  applyVillagerEfficiencyTarget(chart, 8);
+
+  const ideal = series(chart, 'Alpha', 'Ideal');
+  const missedBefore = [...series(chart, 'Alpha', 'Missed production').values];
+  const at = seconds => ideal.values[chart.data.labels.indexOf(seconds)];
+
+  assert.equal(at(80), 8);
+  assert.equal(at(90), 8, 'default ideal remains plateaued at target after a death');
+  assert.equal(at(100), 8);
+  assert.equal(
+    band(chart, 'Alpha', 'Killed').toValues[chart.data.labels.indexOf(90)],
+    8,
+  );
+
+  chart.options.villagerAdjustIdealForDeaths = true;
+  applyVillagerEfficiencyTarget(chart, 8);
+
+  assert.equal(at(80), 8);
+  assert.equal(at(90), 7, 'death-adjusted ideal drops when a villager is killed');
+  assert.equal(at(100), 8, 'the next ideal completion recovers toward target');
+  assert.equal(
+    band(chart, 'Alpha', 'Killed').toValues[chart.data.labels.indexOf(90)],
+    7,
+    'debt bands follow the recomputed displayed Ideal',
+  );
+  assert.deepEqual(
+    series(chart, 'Alpha', 'Missed production').values,
+    missedBefore,
+    'display mode must not change missed-production accounting',
+  );
+});
+
+test('Jin ideal production uses mounted villagers up to 20/23/26 caps, then regular villagers', () => {
+  const summary = {
+    duration: 1000,
+    players: [{
+      name: 'Jin',
+      profileId: 1,
+      civilization: 'jin_dynasty',
+      team: 0,
+      buildOrder: [
+        {
+          type: 'Unit',
+          icon: 'units/mounted_villager',
+          pbgid: MOUNTED_VILLAGER_PBGID,
+          finished: [0, 0, 0],
+          destroyed: [],
+        },
+        {
+          type: 'Unit',
+          icon: 'units/villager',
+          pbgid: VILLAGER_PBGID,
+          finished: [],
+          destroyed: [],
+        },
+        {
+          type: 'Building',
+          icon: 'buildings/town_centre_capitol',
+          pbgid: CAPITAL_TC_PBGID,
+          constructed: [0],
+          destroyed: [],
+        },
+        {
+          type: 'Unknown',
+          icon: 'abilities/mengan_mouke_global',
+          pbgid: 9005189,
+          finished: [700, 900],
+        },
+      ],
+    }],
+  };
+
+  const [chart] = buildVillagerEfficiencyCharts(summary, new Map());
+  const ideal = series(chart, 'Jin', 'Ideal').values;
+  const at = seconds => ideal[chart.data.labels.indexOf(seconds)];
+
+  assert.equal(at(600), 20);
+  assert.equal(at(700), 25);
+  assert.equal(at(830), 29);
+  assert.equal(at(1000), 35);
+});
+
+test('villager efficiency is available in team games without killer attribution', () => {
+  const summary = {
+    duration: 40,
+    players: [
+      player({ name: 'A1', profileId: 1 }),
+      player({ name: 'A2', profileId: 2 }),
+      player({ name: 'B1', profileId: 3 }),
+      player({ name: 'B2', profileId: 4 }),
+    ],
+  };
+
+  assert.equal(buildVillagerEfficiencyCharts(summary, new Map()).length, 1);
+});
+
+test('buildVillagerEfficiencyCharts omits summaries without villager events', () => {
+  const summary = {
+    duration: 30,
+    players: [{
+      name: 'Alpha',
+      buildOrder: [{ type: 'Unit', icon: 'units/scout', finished: [0], destroyed: [] }],
+    }],
+  };
+
+  assert.deepEqual(buildVillagerEfficiencyCharts(summary, new Map()), []);
+});

@@ -67,7 +67,6 @@ function buildSignedArmySeries(
           playerName,
           team: player.team,
           sign,
-          // Labels can collide across civ substitutions.
           key: `army:${player.profileId || originalIndex}:${item.mergeKey || item.label}`,
           label: `${playerName}: ${item.label}`,
           values: signedCount,
@@ -80,7 +79,6 @@ function buildSignedArmySeries(
 
 export function buildArmyCharts(summary: GameSummary, nativeColors: NativeColors, nativePlayerOrder: string[] = []): Chart[] {
   const players: PlayerSummary[] = Array.isArray(summary.players) ? summary.players : [];
-  // Avoid flatlining past recorded samples.
   const lastResourceTime = lastResourceTimestamp(players);
   const gameDuration = lastResourceTime || summary.duration || 0;
   const labels = buildSampleLabels(gameDuration, 10);
@@ -160,9 +158,6 @@ export function buildArmyValueLeadCharts(summary: GameSummary, nativeColors: Nat
 
 export function buildDestroyedValueCharts(summary: GameSummary, nativeColors: NativeColors, nativePlayerOrder: string[] = []): Chart[] {
   const players: PlayerSummary[] = Array.isArray(summary.players) ? summary.players : [];
-  // Allow rendering even when the per-civ unit-data cache hasn't loaded — the
-  // bundled pbgid-map.json now ships costs as a fallback so we still produce
-  // useful numbers immediately.
   const slugs = players.map(civDataSlugForPlayer).filter((slug): slug is string => Boolean(slug));
   if (slugs.length === 0) return [];
   const lastResTime = lastResourceTimestamp(players);

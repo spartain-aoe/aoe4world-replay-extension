@@ -30,8 +30,10 @@ export interface PlayerResources {
 }
 
 export interface PlayerAnalysisLandmark {
+  pbgid?: number;
   gameTime: number;
   newAge: number;
+  name?: string;
 }
 
 export interface PlayerAnalysis {
@@ -55,6 +57,7 @@ export interface BuildOrderItem {
   packed?: number[];
   unpacked?: number[];
   transformed?: number[];
+  unknown?: Record<string, NumberList>;
   count?: number;
 }
 
@@ -98,6 +101,18 @@ export interface PbgidEntry {
   u?: number;
 }
 
+export interface VillagerUnitMeta {
+  k: string;
+  t: number;
+  p: string[];
+  b?: number;
+}
+
+export interface VillagerProducerMeta {
+  k: string;
+  r?: number;
+}
+
 export interface ChartSeries {
   key?: string;
   label: string;
@@ -125,7 +140,10 @@ export interface ChartSeries {
   _playerBase?: Float32Array | null;
   _playerTop?: Float32Array | null;
   _rawValues?: number[];
+  _rawIdealValues?: number[];
   team?: number;
+  render?: 'line' | 'metric';
+  lineDash?: number[];
   _areaIcon?: {
     url: string;
     entry: {
@@ -143,6 +161,16 @@ export interface UnitUpgrade {
 export interface ChartData {
   labels: number[];
   series: ChartSeries[];
+}
+
+export interface ChartBand {
+  key: string;
+  label: string;
+  playerName: string;
+  color: string;
+  fromValues: number[];
+  toValues: number[];
+  opacity?: number;
 }
 
 export interface ChartGeometry {
@@ -165,9 +193,13 @@ export interface Chart {
   options?: {
     height?: number;
     armyMode?: 'count' | 'value';
+    villagerTarget?: number;
+    villagerCropToTarget?: boolean;
+    villagerAdjustIdealForDeaths?: boolean;
     [key: string]: unknown;
   };
   data: ChartData;
+  bands?: ChartBand[];
   ageUps?: AgeUp[];
   _geometry?: ChartGeometry;
   _legendNodes?: Map<string, LegendNodeMeta>;
@@ -179,6 +211,7 @@ export interface Chart {
   _cachedYMax?: number;
   highlightKey?: string | null;
   nativePlayerOrder?: string[];
+  _selectedPlayerName?: string | null;
 }
 
 export interface StackedYCache {
@@ -192,6 +225,7 @@ export interface LegendUnitNode {
   deltaTrainedEl: HTMLElement;
   deltaLostEl: HTMLElement;
   summaryTotal: number;
+  summaryValue?: number;
 }
 
 export interface LegendSummaryNode {
@@ -221,11 +255,13 @@ export interface TimelineElements {
   __aoe4NativeCanvas?: HTMLCanvasElement & CanvasExtensions;
   __aoe4OverlayResizeObserver?: ResizeObserver | null;
   __aoe4PlayerToggleHandlers?: PlayerToggleHandler[];
+  __aoe4PlayerToggleRestore?: (() => void) | null;
   __aoe4LegendPending?: boolean;
   __aoe4LegendChart?: Chart;
   __aoe4BuildOrderRetryScheduled?: boolean;
   __aoe4BuildOrderObserver?: MutationObserver | null;
   __aoe4ArmyModeToggle?: HTMLElement | null;
+  __aoe4VillagerTargetControl?: HTMLElement | null;
   __aoe4SuppressHoverUntilMove?: boolean;
   __aoe4SuppressHoverAbort?: AbortController | null;
 }
@@ -340,6 +376,8 @@ export interface PlayerToggleHandler {
   onClick: (event: MouseEvent) => void;
   onEnter?: (event: MouseEvent) => void;
   onLeave?: (event: MouseEvent) => void;
+  previousRole?: string | null;
+  previousAriaChecked?: string | null;
 }
 
 export interface UnitDataEntry {

@@ -79,7 +79,7 @@ export function appendTooltipRow(
   } else {
     label.textContent = row.item.label;
   }
-  if (chart.type !== 'army' && row.delta !== 0) {
+  if (chart.type !== 'army' && (row.delta ?? 0) !== 0) {
     const deltaValue = row.delta ?? 0;
     const delta = document.createElement('span');
     delta.className = `aoe4-summary-tooltip-delta ${deltaValue > 0 ? 'is-positive' : deltaValue < 0 ? 'is-negative' : 'is-zero'}`;

@@ -32,7 +32,7 @@
     },
     {
       "matches": ["https://aoe4world.com/*"],
-      "js": ["content.js"],
+      "js": ["combat-metrics.js", "content.js"],
       "css": ["style.css"]
     }
   ],

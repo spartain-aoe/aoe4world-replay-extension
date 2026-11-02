@@ -5,6 +5,12 @@ const FAKE_JSON = {
   units:        { '100': { name: 'Archer' },  '101': { name: 'Spearman' } },
   technologies: { '200': { name: 'Wheelbarrow' } },
   upgrades:     { '300': { name: 'Veteran Archer' } },
+  villagerUnits: {
+    '102': { k: 'villager', t: 19, p: ['capital-town-center', 'town-center'] },
+  },
+  villagerProducers: {
+    '400': { k: 'kings-palace', r: 1.1 },
+  },
 };
 
 function mockFetchOk(data = FAKE_JSON) {
@@ -52,6 +58,15 @@ describe('pbgid-map: chrome.runtime.getURL present', () => {
     assert.deepStrictEqual(mod.pbgidUnitsMap.get(101), { name: 'Spearman' });
     assert.deepStrictEqual(mod.pbgidTechsMap.get(200), { name: 'Wheelbarrow' });
     assert.deepStrictEqual(mod.pbgidUpgradesMap.get(300), { name: 'Veteran Archer' });
+    assert.deepStrictEqual(mod.villagerUnitMetaMap.get(102), {
+      k: 'villager',
+      t: 19,
+      p: ['capital-town-center', 'town-center'],
+    });
+    assert.deepStrictEqual(mod.villagerProducerMetaMap.get(400), {
+      k: 'kings-palace',
+      r: 1.1,
+    });
   });
 
   it('ensurePbgidMap calls onLoaded callback once on first load', async () => {

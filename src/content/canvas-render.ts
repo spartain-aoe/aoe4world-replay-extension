@@ -286,6 +286,32 @@ export function drawTimelineCanvasChart(
     ? riseBaselineY + (y - riseBaselineY) * animationProgress
     : y;
 
+  for (const band of chart.bands || []) {
+    const playerVisible = series.some(item =>
+      item.playerName === band.playerName && !item._hidden
+    );
+    if (!playerVisible || !band.fromValues.length || !band.toValues.length) continue;
+    const count = Math.min(labels.length, band.fromValues.length, band.toValues.length);
+    if (!count) continue;
+    const highlighted = isHighlightForPlayer(chart, band.playerName);
+    ctx.fillStyle = band.color;
+    ctx.globalAlpha = (band.opacity ?? 0.16) * (highlighted ? 1 : 0.25);
+    ctx.beginPath();
+    for (let i = 0; i < count; i++) {
+      const x = summaryScaleX(i, count, margin, plotW);
+      const y = animatedLineY(summaryScaleY(band.toValues[i], yMin, yMax, margin, plotH));
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    for (let i = count - 1; i >= 0; i--) {
+      const x = summaryScaleX(i, count, margin, plotW);
+      const y = animatedLineY(summaryScaleY(band.fromValues[i], yMin, yMax, margin, plotH));
+      ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fill();
+  }
+
   if (chart.type === 'army') {
     const collapsedPlayers = getCollapsedPlayers(chart);
     const drawnCollapsedPlayers = new Set<string>();
@@ -399,12 +425,13 @@ export function drawTimelineCanvasChart(
     }
   } else {
     for (const item of series) {
-      if (item._hidden) continue;
+      if (item._hidden || item.render === 'metric') continue;
       if (!item.key) continue;
       ctx.strokeStyle = item.color;
       const highlighted = !chart.highlightKey || chart.highlightKey === item.key || (item.playerName && chart.highlightKey.startsWith('__player__:') && isHighlightForPlayer(chart, item.playerName));
       ctx.globalAlpha = highlighted ? 1 : 0.18;
       ctx.lineWidth = highlighted ? 2.25 : 1.25;
+      if (item.lineDash?.length) ctx.setLineDash(item.lineDash);
       ctx.beginPath();
       const values = item.values;
       const ys = renderedY.get(item.key) as Float32Array | undefined;
@@ -417,6 +444,7 @@ export function drawTimelineCanvasChart(
         else ctx.lineTo(x, y);
       }
       ctx.stroke();
+      ctx.setLineDash([]);
     }
   }
 
@@ -502,6 +530,27 @@ export function drawTimelineCanvasChart(
   }
   ctx.globalAlpha = 1;
   ctx.restore();
+
+  const villagerTarget = chart.type === 'villager-efficiency'
+    ? Number(chart.options?.villagerTarget)
+    : Number.NaN;
+  if (
+    Number.isFinite(villagerTarget) &&
+    villagerTarget >= yMin &&
+    villagerTarget <= yMax
+  ) {
+    const targetY = summaryScaleY(villagerTarget, yMin, yMax, margin, plotH);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(226,232,240,0.65)';
+    ctx.lineWidth = 1.25;
+    ctx.setLineDash([8, 5]);
+    ctx.beginPath();
+    ctx.moveTo(margin.left, targetY);
+    ctx.lineTo(cssWidth - margin.right, targetY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
 
   if (chart.ageUps?.length) {
     drawAgeUpIndicators(ctx, chart.ageUps, {

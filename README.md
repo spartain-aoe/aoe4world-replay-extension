@@ -1,6 +1,6 @@
 # AoE4 Replay Launcher
 
-Watch any AoE4 ranked game replay directly from [aoe4world.com](https://aoe4world.com) with one click. Optionally inject custom charts (army composition, resource gathered, build-order value) and in-game player colors.
+Watch any AoE4 ranked game replay directly from [aoe4world.com](https://aoe4world.com) with one click. Optionally inject custom charts (army composition, resource gathered, combat value, and villager production) and in-game player colors.
 
 ![Games list with Watch Replay buttons](assets/screenshot-3.png)
 
@@ -8,7 +8,8 @@ Watch any AoE4 ranked game replay directly from [aoe4world.com](https://aoe4worl
 
 - **One-click replay launching** from any game on aoe4world.com
 - **Save replays** — star games to keep them locally for offline viewing
-- **Custom charts** — army composition, resource gathered, army value lead charts on game summary pages (on by default)
+- **Custom charts** — army composition, resource gathered, army value lead, destroyed value, and villager production timelines on game summary pages (on by default)
+- **Combat value stats** — adds K/D Cost beside K/D using authoritative unit costs
 - **In-game player colors** — recolors aoe4world's default swatches with actual replay colors (on by default)
 - **Patch-aware** — warns when a replay is from a previous patch, shows "Replay Unavailable" for older patches
 - **DLC support** — handles new civs and colors automatically
@@ -39,10 +40,16 @@ Or load manually:
 Click the extension icon to open settings:
 
 - **Parse additional game data** — master toggle for chart/color features
-  - **Inject custom charts** — adds army composition and resource charts to game pages
+  - **Inject custom charts** — adds army composition, resource, value, and villager production charts to game pages
   - **Use in-game player colors** — recolors swatches with actual replay colors
 
 Charts and in-game player colors are **on by default**. Open the settings panel to turn any of them off. Replay launching works regardless of these settings.
+
+K/D Cost appears for supported 1v1 games and compares the resource value of enemy units killed with the value of units lost.
+
+Army Composition can switch between Count and Value modes. Value keeps the chart resource-weighted while showing every legend metric as `cost (count)` without a resource suffix; zero-cost and unknown-cost units remain visible as `0 (count)` instead of disappearing.
+
+Villager Production compares each player's actual living villagers with uninterrupted production from every observed villager-producing structure. The dashed ideal plateaus at the editable target (120 by default). Cumulative amber Missed Production and red Killed bands stack downward from Ideal. When cumulative debt matches the Ideal–Actual gap, the bands fill it exactly; when debt is larger than the current gap, shading continues below Actual or zero without ever extending above Ideal. Unmatched production opportunities accrue while actual living villagers are below the target, pause at or above it, and resume if villager losses pull actual below target. A loss only reopens accrual; it does not itself count as missed production. The top-right controls can crop the vertical scale to the target or optionally make the Ideal line drop with villager deaths and recover with later ideal production opportunities. The legend acts as a player radio selector so the chart displays one player at a time; hovering another player temporarily previews them. Civilization-specific train times and mechanics include dynamic bonuses such as Chinese Song Dynasty, French age scaling, Viking Falkr's Village Saga, Tughlaq governors, Japanese Town Center Yorishiro, and Jin Dynasty tributary build-limit increases.
 
 ## Development
 

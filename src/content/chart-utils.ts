@@ -36,8 +36,6 @@ export function activeCountValuesFromSorted(labels: readonly number[], created: 
   });
 }
 
-// Cost-weighted active series. finishedCosts/destroyedCosts must be parallel arrays to
-// finished/destroyed times (same index = same event). Missing cost entries are treated as 0.
 export function activeValueValues(
   labels: readonly number[],
   finished: readonly number[],

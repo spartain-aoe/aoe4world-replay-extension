@@ -236,7 +236,7 @@ export function computeClosestSeriesKey(
   let closestDist = Infinity;
   const seenCollapsed = new Set<string>();
   for (const item of chart.data.series) {
-    if (item._hidden) continue;
+    if (item._hidden || item.render === 'metric') continue;
 
     if (chart.type === 'army' && item.playerName && collapsedPlayers?.has(item.playerName)) {
       if (seenCollapsed.has(item.playerName)) continue;

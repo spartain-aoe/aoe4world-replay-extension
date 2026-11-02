@@ -19,6 +19,7 @@ export function ensureChartRenderCache(chart: Chart, margin: ChartMargin, plotH:
   const span = (yMax - yMin) || 1;
   const renderedY = new Map<string, Float32Array | StackedYCache>();
   for (const series of chart.data.series) {
+    if (series.render === 'metric') continue;
     if (chart.type === 'army' && series._stackBase && series._stackTop) {
       const stackBase = new Float32Array(series._stackBase.length);
       const stackTop = new Float32Array(series._stackTop.length);

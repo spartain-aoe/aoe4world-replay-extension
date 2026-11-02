@@ -1,10 +1,16 @@
-import type { PbgidEntry } from './types.ts';
+import type {
+  PbgidEntry,
+  VillagerProducerMeta,
+  VillagerUnitMeta,
+} from './types.ts';
 import { pbgidUnitOverridesMap } from './pbgid-overrides.ts';
 
 interface PbgidMapResponse {
   units?: Record<string, PbgidEntry>;
   technologies?: Record<string, PbgidEntry>;
   upgrades?: Record<string, PbgidEntry>;
+  villagerUnits?: Record<string, VillagerUnitMeta>;
+  villagerProducers?: Record<string, VillagerProducerMeta>;
 }
 
 export const PBGID_MAP_URL = (typeof chrome !== 'undefined' && chrome.runtime?.getURL)
@@ -14,6 +20,8 @@ export const PBGID_MAP_URL = (typeof chrome !== 'undefined' && chrome.runtime?.g
 export const pbgidUnitsMap: Map<number, PbgidEntry> = new Map();
 export const pbgidTechsMap: Map<number, PbgidEntry> = new Map();
 export const pbgidUpgradesMap: Map<number, PbgidEntry> = new Map();
+export const villagerUnitMetaMap: Map<number, VillagerUnitMeta> = new Map();
+export const villagerProducerMetaMap: Map<number, VillagerProducerMeta> = new Map();
 // Secondary index: family merge-key → cost total. Built from pbgidUnitsMap
 // after load. Used as a fallback in `unitCostForItem` for pbgids that resolve
 // only via `pbgid-overrides.ts` (which carry display info but no `c`) or for
@@ -51,12 +59,19 @@ export function lookupCostByMergeKey(key: string | null | undefined): number {
 export function ensurePbgidMap(onLoaded?: () => void): Promise<void> {
   if (pbgidMapLoaded) return Promise.resolve();
   if (!pbgidMapPromise) {
-    pbgidMapPromise = (PBGID_MAP_URL ? fetch(PBGID_MAP_URL) : Promise.reject(new Error('no_runtime_url')))
+    const runtimeUrl = PBGID_MAP_URL || (
+      typeof chrome !== 'undefined' && chrome.runtime?.getURL
+        ? chrome.runtime.getURL('data/pbgid-map.json')
+        : ''
+    );
+    pbgidMapPromise = (runtimeUrl ? fetch(runtimeUrl) : Promise.reject(new Error('no_runtime_url')))
       .then(r => r.ok ? r.json() as Promise<PbgidMapResponse> : Promise.reject(new Error('http_' + r.status)))
       .then(json => {
         for (const [pbgid, entry] of Object.entries(json.units || {})) pbgidUnitsMap.set(Number(pbgid), entry);
         for (const [pbgid, entry] of Object.entries(json.technologies || {})) pbgidTechsMap.set(Number(pbgid), entry);
         for (const [pbgid, entry] of Object.entries(json.upgrades || {})) pbgidUpgradesMap.set(Number(pbgid), entry);
+        for (const [pbgid, entry] of Object.entries(json.villagerUnits || {})) villagerUnitMetaMap.set(Number(pbgid), entry);
+        for (const [pbgid, entry] of Object.entries(json.villagerProducers || {})) villagerProducerMetaMap.set(Number(pbgid), entry);
         rebuildCostByKeyIndex();
         pbgidMapLoaded = true;
       })

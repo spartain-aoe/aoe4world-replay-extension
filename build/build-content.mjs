@@ -10,6 +10,7 @@ const src = (...p) => path.join(root, 'src', ...p);
 
 const ENTRIES = [
   { in: src('content', 'entry.ts'),          out: out('content.js'),         format: 'iife',   budget: 262144 },
+  { in: src('content', 'combat-metrics-entry.ts'), out: out('combat-metrics.js'), format: 'iife' },
   { in: src('content', 'early-hide.ts'),      out: out('early-hide.js'),      format: 'iife' },
   { in: src('content', 'chart-injector.ts'),  out: out('chart-injector.js'),  format: 'iife' },
   { in: src('background', 'background.ts'),   out: out('background.js'),      format: 'esm' },

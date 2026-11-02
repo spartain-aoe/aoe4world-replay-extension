@@ -18,12 +18,18 @@
 import { writeFile, mkdir, stat } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { resourceCostTotal } from './resource-cost.mjs';
 
 const SOURCES = [
   {
     type: 'units',
     url: 'https://raw.githubusercontent.com/aoe4world/data/main/units/all-optimized.json',
     nameSource: 'family',
+  },
+  {
+    type: 'buildings',
+    url: 'https://raw.githubusercontent.com/aoe4world/data/main/buildings/all-optimized.json',
+    metadataOnly: true,
   },
   {
     type: 'technologies',
@@ -47,6 +53,13 @@ const SOURCES = [
 
 const COMMIT_API = 'https://api.github.com/repos/aoe4world/data/commits?path=';
 const STRICT = process.argv.includes('--strict');
+const VILLAGER_PRODUCER_RATE_MULTIPLIERS = {
+  'kings-palace': 1.1,
+  'palace-of-swabia': 3,
+};
+const VILLAGER_BATCH_SIZES_BY_CIV = {
+  gol: 2,
+};
 
 async function fetchJson(url) {
   const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
@@ -216,9 +229,7 @@ function slimFamilies(json, opts = {}) {
   for (const fam of data) {
     if (!fam || typeof fam !== 'object') continue;
     families++;
-    const familyCost = includeCosts && Number.isFinite(fam.costs?.total) && fam.costs.total > 0
-      ? fam.costs.total
-      : null;
+    const familyCost = includeCosts ? resourceCostTotal(fam.costs) : null;
     const familyEntry = {
       n: fam.name || fam.id || 'Unit',
       k: fam.id || (fam.name || '').toLowerCase().replace(/\s+/g, '-'),
@@ -261,9 +272,7 @@ function slimFamilies(json, opts = {}) {
           // Variations can override family-level costs (e.g. byzantine archer
           // costs 30f/50w while the family-level archer is also 30f/50w but
           // some civs differ). Use variation cost when present.
-          const variationCost = Number.isFinite(v.costs?.total) && v.costs.total > 0
-            ? v.costs.total
-            : null;
+          const variationCost = resourceCostTotal(v.costs);
           if (variationCost != null && variationCost !== familyCost) {
             entry = { ...familyEntry, c: variationCost };
           }
@@ -285,6 +294,61 @@ function slimFamilies(json, opts = {}) {
   return { map: out, families, pbgids: Object.keys(out).length, withCost };
 }
 
+function isVillagerFamily(fam) {
+  return [fam?.id, fam?.name].some(value =>
+    /\bvillager\b/i.test(String(value || '').replace(/[-_/\\]+/g, ' '))
+  );
+}
+
+function slimVillagerUnits(json) {
+  const data = Array.isArray(json) ? json : json?.data;
+  if (!Array.isArray(data)) throw new Error('Unexpected units payload shape (no data array)');
+  const map = {};
+  const producerFamilies = new Set();
+  for (const fam of data) {
+    if (!fam || !isVillagerFamily(fam)) continue;
+    for (const variation of (fam.variations || [])) {
+      if (!Number.isFinite(variation?.pbgid)) continue;
+      const trainTime = variation.costs?.time ?? fam.costs?.time;
+      const producedBy = variation.producedBy ?? fam.producedBy;
+      if (!Number.isFinite(trainTime) || trainTime <= 0 || !Array.isArray(producedBy) || !producedBy.length) {
+        continue;
+      }
+      const producers = [...new Set(producedBy.filter(Boolean).map(String))].sort();
+      for (const producer of producers) producerFamilies.add(producer);
+      const entry = {
+        k: fam.id || variation.baseId || variation.id || 'villager',
+        t: trainTime,
+        p: producers,
+      };
+      const batchSize = Math.max(
+        1,
+        ...(variation.civs || []).map(civ => VILLAGER_BATCH_SIZES_BY_CIV[civ] || 1),
+      );
+      if (batchSize > 1) entry.b = batchSize;
+      map[variation.pbgid] = entry;
+    }
+  }
+  return { map, producerFamilies };
+}
+
+function slimVillagerProducers(json, producerFamilies) {
+  const data = Array.isArray(json) ? json : json?.data;
+  if (!Array.isArray(data)) throw new Error('Unexpected buildings payload shape (no data array)');
+  const map = {};
+  for (const fam of data) {
+    if (!fam?.id || !producerFamilies.has(fam.id)) continue;
+    for (const variation of (fam.variations || [])) {
+      if (!Number.isFinite(variation?.pbgid)) continue;
+      const entry = { k: fam.id };
+      const rate = VILLAGER_PRODUCER_RATE_MULTIPLIERS[fam.id];
+      if (Number.isFinite(rate) && rate > 0 && rate !== 1) entry.r = rate;
+      map[variation.pbgid] = entry;
+    }
+  }
+  return map;
+}
+
 async function main() {
   const here = dirname(fileURLToPath(import.meta.url));
   const outDir = join(here, '..', 'chrome-extension', 'data');
@@ -292,17 +356,20 @@ async function main() {
   await mkdir(outDir, { recursive: true });
 
   const result = {
-    __version__: 1,
+    __version__: 2,
     fetchedAt: new Date().toISOString(),
     sources: {},
     units: {},
     technologies: {},
     upgrades: {},
+    villagerUnits: {},
+    villagerProducers: {},
   };
 
   let baseUnitIndex = null;
   let unitFamilyIdSet = null;
   let unitFamilyNameIndex = null;
+  let villagerProducerFamilies = new Set();
   let fetchFailed = false;
   for (const src of SOURCES) {
     process.stdout.write(`Fetching ${src.type}…`);
@@ -312,6 +379,22 @@ async function main() {
         baseUnitIndex = buildAttribNameToFamilyIndex(json);
         unitFamilyIdSet = buildUnitFamilyIdSet(json);
         unitFamilyNameIndex = buildUnitFamilyNameIndex(json);
+        const villagerMeta = slimVillagerUnits(json);
+        result.villagerUnits = villagerMeta.map;
+        villagerProducerFamilies = villagerMeta.producerFamilies;
+      }
+      if (src.type === 'buildings') {
+        result.villagerProducers = slimVillagerProducers(json, villagerProducerFamilies);
+        const commit = await fetchHeadCommit(src.url.replace('https://raw.githubusercontent.com/aoe4world/data/main/', ''));
+        const pbgids = Object.keys(result.villagerProducers).length;
+        result.sources.buildings = {
+          url: src.url,
+          families: villagerProducerFamilies.size,
+          pbgids,
+          commit,
+        };
+        console.log(` ${villagerProducerFamilies.size} villager-producer families, ${pbgids} pbgids`);
+        continue;
       }
       const slimOpts = { nameSource: src.nameSource };
       if (src.type === 'upgrades') {
@@ -329,7 +412,7 @@ async function main() {
         const withBase = Object.values(map).filter(e => e.b).length;
         extraStat = `, ${withBase} with base unit`;
       } else if (src.type === 'units') {
-        extraStat = `, ${withCost} with cost`;
+        extraStat = `, ${withCost} with cost, ${Object.keys(result.villagerUnits).length} villager production records`;
       }
       console.log(` ${families} families, ${pbgids} pbgids${extraStat}`);
     } catch (err) {

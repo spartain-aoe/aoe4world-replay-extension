@@ -1,6 +1,7 @@
 /**
  * Integration coverage for the Summary+ features added on this branch:
- * - Idle TC details-table column fed from cached stats telemetry.
+ * - Idle TC and K/D Cost details-table columns.
+ * - Villager Production ideal/actual lines and Ideal-anchored debt bands.
  * - Summary+ chart option ordering.
  * - Army Count/Value toggle labels and Value-mode data for override-only PBGIDs.
  * - Range-selection legend deltas in Value mode are resource-weighted, not counts.
@@ -183,12 +184,12 @@ async function setup(options = {}) {
       host.innerHTML = `
         <table data-summary-plus-details-fixture>
           <thead>
-            <tr><th></th><th colspan="1">Score</th><th colspan="1">Resources Spent</th><th colspan="1">Max. Workers</th><th colspan="1">Misc</th><th colspan="1">Sacred Sites</th></tr>
-            <tr><th></th><th>Total</th><th>Food</th><th>Villagers</th><th>APM</th><th>Capt.</th></tr>
+            <tr><th></th><th colspan="1">Score</th><th colspan="1">Resources Spent</th><th colspan="1">Max. Workers</th><th colspan="4">Military</th><th colspan="1">Misc</th><th colspan="1">Sacred Sites</th></tr>
+            <tr><th></th><th>Total</th><th>Food</th><th>Villagers</th><th>Prod.</th><th>Kills</th><th>Deaths</th><th>K/D</th><th>APM</th><th>Capt.</th></tr>
           </thead>
           <tbody>
-            <tr><td><a href="/players/24574510-spartain">spartain</a></td><td>100</td><td>50</td><td>10</td><td>136</td><td>0</td></tr>
-            <tr><td><a href="/players/20653422-DonationDonation">DonationDonation</a></td><td>90</td><td>40</td><td>9</td><td>121</td><td>0</td></tr>
+            <tr><td><a href="/players/24574510-spartain">spartain</a></td><td>100</td><td>50</td><td>10</td><td>180</td><td>147</td><td>151</td><td>0.97</td><td>136</td><td>0</td></tr>
+            <tr><td><a href="/players/20653422-DonationDonation">DonationDonation</a></td><td>90</td><td>40</td><td>9</td><td>306</td><td>151</td><td>147</td><td>1.03</td><td>121</td><td>0</td></tr>
           </tbody>
         </table>`;
       document.body.appendChild(host);
@@ -578,7 +579,35 @@ async function installNumudanRoutesWithDelayedPbgidMap(delayMs = 2500) {
     assert(donation?.cells.includes('0:45'), `DonationDonation Idle TC not rendered as 0:45: ${JSON.stringify(donation)}`);
   });
 
-  await test('Summary+ chart options are first and ordered Army → AVL → DV → resources', async () => {
+  await test('K/D Cost is placed after K/D with plain ratios and concise tooltips', async () => {
+    await page.waitForFunction(() => [...document.querySelectorAll('th')]
+      .some(th => (th.textContent || '').trim() === 'K/D Cost'), null, { timeout: 10000 });
+    const state = await page.evaluate(() => {
+      const headers = [...document.querySelectorAll('thead tr:nth-child(2) th')]
+        .map(th => (th.textContent || '').replace(/\s+/g, ' ').trim());
+      const cells = [...document.querySelectorAll('td[data-aoe4-details-metric="kd-cost"]')]
+        .map(td => ({ text: (td.textContent || '').trim(), title: td.title }));
+      const groups = [...document.querySelectorAll('thead tr:first-child th')]
+        .map(th => ({ text: (th.textContent || '').trim(), colspan: th.getAttribute('colspan') }));
+      return { headers, cells, groups };
+    });
+    assert(
+      state.headers.indexOf('K/D Cost') === state.headers.indexOf('K/D') + 1,
+      `K/D Cost not placed after K/D: ${JSON.stringify(state.headers)}`,
+    );
+    assert(
+      state.cells.length === 2 &&
+        state.cells.map(cell => cell.text).join(',') === '0.59,1.7' &&
+        state.cells.every(cell => /^Enemy value killed: [\d,]+; own value lost: [\d,]+\.$/.test(cell.title)),
+      `K/D Cost should use plain ratios and concise tooltips: ${JSON.stringify(state.cells)}`,
+    );
+    assert(
+      state.groups.find(group => group.text === 'Military')?.colspan === '5',
+      `Military colspan not extended: ${JSON.stringify(state.groups)}`,
+    );
+  });
+
+  await test('Summary+ chart options are first and ordered Army → AVL → DV → villagers → resources', async () => {
     await page.waitForFunction(() => {
       const select = document.querySelector('select');
       return select?.value?.includes('army-composition') &&
@@ -599,6 +628,7 @@ async function installNumudanRoutesWithDelayedPbgidMap(delayMs = 2500) {
       'Army Composition',
       'Army Value Lead',
       'Destroyed Value',
+      'Villager Production',
       'Resources Gathered: Total',
       'Resources Gathered: Food',
       'Resources Gathered: Wood',
@@ -622,6 +652,125 @@ async function installNumudanRoutesWithDelayedPbgidMap(delayMs = 2500) {
     );
   });
 
+  await test('Villager Production can be selected and exposes all four tooltip metrics', async () => {
+    const selected = await page.evaluate(() => {
+      const select = document.querySelector('select');
+      const option = [...(select?.querySelectorAll('option') || [])]
+        .find(opt => (opt.textContent || '').trim() === 'Villager Production');
+      if (!select || !option) return false;
+      select.value = option.value;
+      select.dispatchEvent(new Event('input', { bubbles: true }));
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    });
+    assert(selected, 'Villager Production option not found');
+    await page.waitForFunction(() => {
+      const heading = [...document.querySelectorAll('h3')]
+        .find(h => (h.textContent || '').includes('Villager Production'));
+      const canvas = document.querySelector('canvas[data-aoe4-summary-canvas]');
+      if (!heading || !canvas) return false;
+      const style = getComputedStyle(canvas);
+      const rect = canvas.getBoundingClientRect();
+      return style.display !== 'none' && rect.width > 0 && rect.height > 0;
+    }, null, { timeout: 10000 });
+
+    const initialRadios = await page.evaluate(() =>
+      [...document.querySelectorAll('.flex.items-center.cursor-pointer[role="radio"]')]
+        .map(row => ({
+          text: (row.textContent || '').replace(/\s+/g, ' ').trim(),
+          checked: row.getAttribute('aria-checked'),
+          opacity: row.style.opacity,
+        }))
+    );
+    assert(initialRadios.length === 2, `expected two Villager Production radios: ${JSON.stringify(initialRadios)}`);
+    assert(initialRadios.filter(row => row.checked === 'true').length === 1,
+      `Villager Production should initially show one player: ${JSON.stringify(initialRadios)}`);
+    assert(initialRadios.filter(row => row.checked === 'false').every(row => row.opacity === '0.35'),
+      `unselected Villager Production radios should be dimmed: ${JSON.stringify(initialRadios)}`);
+
+    const switchedRadio = await page.evaluate(() => {
+      const rows = [...document.querySelectorAll('.flex.items-center.cursor-pointer[role="radio"]')];
+      const target = rows.find(row => row.getAttribute('aria-checked') === 'false');
+      const clickable = target?.querySelector('.font-bold, [class*="font-bold"]');
+      if (!target || !clickable) return null;
+      const targetText = (target.textContent || '').replace(/\s+/g, ' ').trim();
+      clickable.click();
+      return {
+        targetText,
+        rows: rows.map(row => ({
+          text: (row.textContent || '').replace(/\s+/g, ' ').trim(),
+          checked: row.getAttribute('aria-checked'),
+        })),
+      };
+    });
+    assert(switchedRadio, 'could not switch Villager Production player radio');
+    assert(switchedRadio.rows.filter(row => row.checked === 'true').length === 1,
+      `radio switch should leave exactly one player selected: ${JSON.stringify(switchedRadio)}`);
+    assert(switchedRadio.rows.find(row => row.text === switchedRadio.targetText)?.checked === 'true',
+      `clicked Villager Production radio was not selected: ${JSON.stringify(switchedRadio)}`);
+
+    const canvas = page.locator('canvas[data-aoe4-summary-canvas]');
+    const box = await canvas.boundingBox();
+    assert(box, 'Villager Production canvas has no bounding box');
+    await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.5);
+    await page.waitForFunction(() => {
+      const tooltip = document.querySelector('.aoe4-summary-html-tooltip');
+      const text = (tooltip?.textContent || '').replace(/\s+/g, ' ');
+      return tooltip && getComputedStyle(tooltip).display !== 'none' &&
+        ['Actual', 'Ideal', 'Missed production', 'Killed'].every(label => text.includes(label));
+    }, null, { timeout: 10000 });
+
+    const targetState = await page.evaluate(() => {
+      const input = document.querySelector('.aoe4-villager-target-control-input');
+      const crop = document.querySelector('.aoe4-villager-target-control-crop');
+      const deaths = document.querySelector('.aoe4-villager-target-control-deaths');
+      if (!input || !crop || !deaths) return null;
+      const initial = input.value;
+      input.value = '135';
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      if (crop.getAttribute('aria-pressed') === 'true') crop.click();
+      crop.click();
+      if (deaths.getAttribute('aria-pressed') === 'true') deaths.click();
+      deaths.click();
+      const result = {
+        initial,
+        edited: input.value,
+        stored: localStorage.getItem('aoe4plus.villagerTarget'),
+        cropText: (crop.textContent || '').trim(),
+        cropHasIcon: !!crop.querySelector('svg'),
+        cropLabel: crop.getAttribute('aria-label'),
+        cropPressed: crop.getAttribute('aria-pressed'),
+        cropStored: localStorage.getItem('aoe4plus.villagerCropToTarget'),
+        deathsText: (deaths.textContent || '').trim(),
+        deathsHasIcon: !!deaths.querySelector('svg'),
+        deathsLabel: deaths.getAttribute('aria-label'),
+        deathsPressed: deaths.getAttribute('aria-pressed'),
+        deathsStored: localStorage.getItem('aoe4plus.villagerAdjustIdealForDeaths'),
+      };
+      crop.click();
+      deaths.click();
+      input.value = '120';
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      return result;
+    });
+    assert(targetState, 'Villager target editor not found');
+    assert(targetState.initial === '120', `unexpected default villager target: ${JSON.stringify(targetState)}`);
+    assert(targetState.edited === '135', `villager target input did not retain edit: ${JSON.stringify(targetState)}`);
+    assert(targetState.stored === '135', `villager target edit was not applied: ${JSON.stringify(targetState)}`);
+    assert(targetState.cropText === '' && targetState.cropHasIcon,
+      `villager crop control should be icon-only: ${JSON.stringify(targetState)}`);
+    assert(targetState.cropLabel === 'Crop chart to villager target',
+      `villager crop control should have an accessible label: ${JSON.stringify(targetState)}`);
+    assert(targetState.cropPressed === 'true' && targetState.cropStored === 'true',
+      `villager crop control did not persist its active state: ${JSON.stringify(targetState)}`);
+    assert(targetState.deathsText === '' && targetState.deathsHasIcon,
+      `villager death-adjust control should be icon-only: ${JSON.stringify(targetState)}`);
+    assert(targetState.deathsLabel === 'Shift ideal for villager deaths',
+      `villager death-adjust control should have an accessible label: ${JSON.stringify(targetState)}`);
+    assert(targetState.deathsPressed === 'true' && targetState.deathsStored === 'true',
+      `villager death-adjust control did not persist its active state: ${JSON.stringify(targetState)}`);
+  });
+
   await test('Army Value mode has Count/Value labels and non-zero value data for override-only PBGIDs', async () => {
     await scrollToTimeline();
     await selectArmyComposition();
@@ -635,11 +784,12 @@ async function installNumudanRoutesWithDelayedPbgidMap(delayMs = 2500) {
       const rows = [...document.querySelectorAll('.aoe4-legend-breakdown[data-player-name="spartain"] .aoe4-army-unit-row')]
         .map(row => {
           const total = row.querySelector('.aoe4-army-unit-total')?.textContent?.trim() || '';
-          const toNumber = value => Number(value.replace(/[^\d.-]/g, '')) || 0;
+          const metric = /^([\d,]+) \(([\d,]+)\)$/.exec(total);
           return {
             text: (row.textContent || '').replace(/\s+/g, ' ').trim(),
             total,
-            totalNumber: toNumber(total),
+            totalNumber: metric ? Number(metric[1].replace(/,/g, '')) : 0,
+            countNumber: metric ? Number(metric[2].replace(/,/g, '')) : 0,
           };
         });
       const rowFor = label => rows.find(row => row.text.includes(label));
@@ -652,8 +802,10 @@ async function installNumudanRoutesWithDelayedPbgidMap(delayMs = 2500) {
     const toggleTexts = state.labels.map(item => item.text);
     assert(JSON.stringify(toggleTexts) === JSON.stringify(['Count', 'Value']), `unexpected toggle labels: ${JSON.stringify(toggleTexts)}`);
     assert(state.labels.find(item => item.text === 'Value')?.pressed === 'true', `Value button not active: ${JSON.stringify(state.labels)}`);
-    assert(state.mohe?.totalNumber > 0 && /res$/.test(state.mohe.total), `Mohe value total missing from legend: ${JSON.stringify(state.mohe)}`);
-    assert(state.iron?.totalNumber > 0 && /res$/.test(state.iron.total), `Iron Pagoda value total missing from legend: ${JSON.stringify(state.iron)}`);
+    assert(state.mohe?.totalNumber > 0 && state.mohe?.countNumber > 0 && !/\bres\b/i.test(state.mohe.total),
+      `Mohe cost/count total missing from legend: ${JSON.stringify(state.mohe)}`);
+    assert(state.iron?.totalNumber > 0 && state.iron?.countNumber > 0 && !/\bres\b/i.test(state.iron.total),
+      `Iron Pagoda cost/count total missing from legend: ${JSON.stringify(state.iron)}`);
   });
 
   await test('Value-mode range legend shows resource deltas and hides Count/Value toggle', async () => {
@@ -668,7 +820,10 @@ async function installNumudanRoutesWithDelayedPbgidMap(delayMs = 2500) {
           const lostEl = row.querySelector('.aoe4-army-unit-delta-lost');
           const trained = row.querySelector('.aoe4-army-unit-delta-trained')?.textContent?.trim() || '';
           const lost = row.querySelector('.aoe4-army-unit-delta-lost')?.textContent?.trim() || '';
-          const toNumber = value => Number(value.replace(/,/g, '')) || 0;
+          const toNumber = value => {
+            const metric = /^([\d,]+) \(([\d,]+)\)$/.exec(value);
+            return metric ? Number(metric[1].replace(/,/g, '')) : 0;
+          };
           const rect = el => {
             const r = el?.getBoundingClientRect?.();
             return r ? { left: r.left, right: r.right, width: r.width } : null;
@@ -677,6 +832,8 @@ async function installNumudanRoutesWithDelayedPbgidMap(delayMs = 2500) {
             text: (row.textContent || '').replace(/\s+/g, ' ').trim(),
             trained,
             lost,
+            formatted: [trained, lost].filter(Boolean).every(value => /^[\d,]+ \([\d,]+\)$/.test(value)),
+            hasRes: /\bres\b/i.test(`${trained} ${lost}`),
             trainedNumber: toNumber(trained),
             lostNumber: toNumber(lost),
             totalRect: rect(totalEl),
@@ -691,6 +848,8 @@ async function installNumudanRoutesWithDelayedPbgidMap(delayMs = 2500) {
       };
     });
     assert(state.toggleDisplay === 'none', `Count/Value toggle should hide while range is active: ${JSON.stringify(state)}`);
+    assert(state.rows.every(row => row.formatted && !row.hasRes),
+      `Value range metrics must use cost (count) without res: ${JSON.stringify(state.rows)}`);
     const resourceDeltaRows = state.rows.filter(row => row.trainedNumber >= 100 || row.lostNumber >= 100);
     assert(resourceDeltaRows.length > 0, `expected resource-sized deltas in Value mode, got rows: ${JSON.stringify(state.rows)}`);
     assert(
