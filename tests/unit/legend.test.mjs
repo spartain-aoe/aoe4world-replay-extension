@@ -203,28 +203,34 @@ describe('setDeltaCells', () => {
     assert.ok(!node.deltaLostEl.classList.contains('is-zero'));
   });
 
-  test('marks zero values with is-zero class', () => {
+  test('keeps true-zero cells empty', () => {
     setDeltaCells(node, 0, 0);
-    assert.equal(node.deltaTrainedEl.textContent, '0');
-    assert.equal(node.deltaLostEl.textContent, '0');
-    assert.ok(node.deltaTrainedEl.classList.contains('is-zero'));
-    assert.ok(node.deltaLostEl.classList.contains('is-zero'));
+    assert.equal(node.deltaTrainedEl.textContent, '');
+    assert.equal(node.deltaLostEl.textContent, '');
+    assert.ok(!node.deltaTrainedEl.classList.contains('is-zero'));
+    assert.ok(!node.deltaLostEl.classList.contains('is-zero'));
   });
 
   test('trained > 0, lost = 0', () => {
     setDeltaCells(node, 7, 0);
     assert.equal(node.deltaTrainedEl.textContent, '7');
-    assert.equal(node.deltaLostEl.textContent, '0');
+    assert.equal(node.deltaLostEl.textContent, '');
     assert.ok(!node.deltaTrainedEl.classList.contains('is-zero'));
-    assert.ok(node.deltaLostEl.classList.contains('is-zero'));
+    assert.ok(!node.deltaLostEl.classList.contains('is-zero'));
   });
 
   test('trained = 0, lost > 0', () => {
     setDeltaCells(node, 0, 4);
-    assert.equal(node.deltaTrainedEl.textContent, '0');
+    assert.equal(node.deltaTrainedEl.textContent, '');
     assert.equal(node.deltaLostEl.textContent, '4');
-    assert.ok(node.deltaTrainedEl.classList.contains('is-zero'));
+    assert.ok(!node.deltaTrainedEl.classList.contains('is-zero'));
     assert.ok(!node.deltaLostEl.classList.contains('is-zero'));
+  });
+
+  test('keeps zero-cost cells visible when their count is nonzero', () => {
+    setDeltaCells(node, 0, 0, true, 2, 0);
+    assert.equal(node.deltaTrainedEl.textContent, '0 (2)');
+    assert.equal(node.deltaLostEl.textContent, '');
   });
 
   test('rounds float values', () => {
@@ -500,7 +506,7 @@ describe('updateLegendLive', () => {
 
     const node = chart._legendNodes.get('u1');
     assert.equal(node.deltaTrainedEl.textContent, '5');
-    assert.equal(node.deltaLostEl.textContent, '0');
+    assert.equal(node.deltaLostEl.textContent, '');
   });
 
   test('sets delta lost when value decreases', () => {
@@ -513,7 +519,7 @@ describe('updateLegendLive', () => {
     updateLegendLive(chart, 1, null);
 
     const node = chart._legendNodes.get('u1');
-    assert.equal(node.deltaTrainedEl.textContent, '0');
+    assert.equal(node.deltaTrainedEl.textContent, '');
     assert.equal(node.deltaLostEl.textContent, '5');
   });
 
@@ -586,11 +592,11 @@ describe('updateLegendLive', () => {
     const summaryMeta = chart._legendNodes.get('__summary__Alice');
     assert.equal(knownNode.totalEl.textContent, '240 (1)');
     assert.equal(knownNode.deltaTrainedEl.textContent, '240 (1)');
-    assert.equal(knownNode.deltaLostEl.textContent, '0 (0)');
+    assert.equal(knownNode.deltaLostEl.textContent, '');
     assert.equal(unknownNode.rowEl.style.display, '');
     assert.equal(unknownNode.totalEl.textContent, '0 (1)');
     assert.equal(unknownNode.deltaTrainedEl.textContent, '0 (1)');
-    assert.equal(unknownNode.deltaLostEl.textContent, '0 (0)');
+    assert.equal(unknownNode.deltaLostEl.textContent, '');
     assert.match(summaryMeta.summaryLabelEl.textContent, /Knight: 240 \(1\)/);
     assert.match(summaryMeta.summaryLabelEl.textContent, /Unknown Unit: 0 \(1\)/);
   });

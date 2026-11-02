@@ -11,10 +11,13 @@ export function activeAt(values: number[] | undefined, index: number): number {
   return Math.max(0, Math.round(Math.abs(values?.[index] || 0)));
 }
 
-export function formatArmyMetric(value: number, count: number, valueMode: boolean): string {
-  const formatted = Math.round(Math.abs(value || 0)).toLocaleString();
+export function formatArmyMetric(value: number, count: number, valueMode: boolean, blankZero = false): string {
+  const roundedValue = Math.round(Math.abs(value || 0));
+  const roundedCount = Math.round(Math.abs(count || 0));
+  if (blankZero && roundedValue === 0 && roundedCount === 0) return '';
+  const formatted = roundedValue.toLocaleString();
   return valueMode
-    ? `${formatted} (${Math.round(Math.abs(count || 0)).toLocaleString()})`
+    ? `${formatted} (${roundedCount.toLocaleString()})`
     : formatted;
 }
 

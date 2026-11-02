@@ -75,7 +75,8 @@ function assertValueRows(state, phase) {
   const visible = state.rows.filter(row => row.display !== 'none');
   assert(visible.length > 0, `${phase}: no visible legend rows: ${JSON.stringify(state)}`);
   for (const row of visible) {
-    assert(METRIC_RE.test(row.total), `${phase}: invalid total for ${row.name}: ${JSON.stringify(row)}`);
+    assert(!row.total || METRIC_RE.test(row.total), `${phase}: invalid total for ${row.name}: ${JSON.stringify(row)}`);
+    assert(row.total || row.gained || row.lost, `${phase}: empty visible row for ${row.name}: ${JSON.stringify(row)}`);
     assert(!/\bres\b/i.test(`${row.total} ${row.gained} ${row.lost}`), `${phase}: res suffix leaked: ${JSON.stringify(row)}`);
     if (row.gained) assert(METRIC_RE.test(row.gained), `${phase}: invalid gained metric: ${JSON.stringify(row)}`);
     if (row.lost) assert(METRIC_RE.test(row.lost), `${phase}: invalid lost metric: ${JSON.stringify(row)}`);
@@ -160,6 +161,14 @@ async function dragRange(page) {
         finished: [100, 200, 300],
         destroyed: [250],
       });
+      summary.players[0].buildOrder.push({
+        id: 'legend-empty-delta',
+        type: 'Unit',
+        icon: 'icons/races/common/units/empty_cell_guard_2',
+        pbgid: 999999992,
+        finished: [150],
+        destroyed: [],
+      });
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -233,13 +242,22 @@ async function dragRange(page) {
     assertValueRows(state, 'Value range');
     unknown = state.rows.find(row => row.name === 'Unknown Guard');
     assert(unknown?.display !== 'none', `zero-cost range row hidden: ${JSON.stringify(unknown)}`);
-    assert(unknown.total === '0 (0)', `zero-cost Starting metric wrong: ${JSON.stringify(unknown)}`);
+    assert(unknown.total === '', `true-zero Starting cell should be empty: ${JSON.stringify(unknown)}`);
     assert(unknown.gained === '0 (3)', `zero-cost Gained metric wrong: ${JSON.stringify(unknown)}`);
     assert(unknown.lost === '0 (1)', `zero-cost Lost metric wrong: ${JSON.stringify(unknown)}`);
+    const emptyDelta = state.rows.find(row => row.name === 'Empty Cell Guard');
+    assert(emptyDelta?.display !== 'none', `empty-delta range row hidden: ${JSON.stringify(emptyDelta)}`);
+    assert(emptyDelta.total === '', `true-zero Starting cell should be empty: ${JSON.stringify(emptyDelta)}`);
+    assert(emptyDelta.gained === '0 (1)', `zero-cost Gained metric wrong: ${JSON.stringify(emptyDelta)}`);
+    assert(emptyDelta.lost === '', `true-zero Lost cell should be empty: ${JSON.stringify(emptyDelta)}`);
+    assert(!state.rows.some(row => row.total === '0 (0)' || row.gained === '0 (0)' || row.lost === '0 (0)'),
+      `true-zero cells should be blank: ${JSON.stringify(state.rows)}`);
 
     await toggleSpartainSummary(page);
     state = await legendState(page);
-    assert(/Unknown Guard 0 \(3\) 0 \(1\)/.test(state.summary) && !/\bres\b/i.test(state.summary),
+    assert(/Unknown Guard 0 \(3\) 0 \(1\)/.test(state.summary) &&
+      !/0 \(0\)/.test(state.summary) &&
+      !/\bres\b/i.test(state.summary),
       `range collapsed summary is inconsistent: ${JSON.stringify(state.summary)}`);
 
     const reset = page.locator('.aoe4-range-reset');

@@ -58,7 +58,7 @@ export function updateLegendLive(chart: Chart, index: number, closestKey: string
     }
     node.rowEl.style.display = '';
 
-    const text = formatArmyMetric(value, count, valueMode);
+    const text = formatArmyMetric(value, count, valueMode, true);
     if (node.totalEl.textContent !== text) node.totalEl.textContent = text;
     const countDelta = count - previousCount;
     const valueDelta = value - previousValue;
@@ -132,10 +132,10 @@ export function setDeltaCells(
     node.deltaLostEl.classList.remove('is-zero');
     return;
   }
-  const t = formatArmyMetric(trained || 0, trainedCount || 0, valueMode);
-  const l = formatArmyMetric(lost || 0, lostCount || 0, valueMode);
+  const t = formatArmyMetric(trained || 0, trainedCount || 0, valueMode, true);
+  const l = formatArmyMetric(lost || 0, lostCount || 0, valueMode, true);
   if (node.deltaTrainedEl.textContent !== t) node.deltaTrainedEl.textContent = t;
   if (node.deltaLostEl.textContent !== l) node.deltaLostEl.textContent = l;
-  node.deltaTrainedEl.classList.toggle('is-zero', (trained || 0) === 0 && (trainedCount || 0) === 0);
-  node.deltaLostEl.classList.toggle('is-zero', (lost || 0) === 0 && (lostCount || 0) === 0);
+  node.deltaTrainedEl.classList.remove('is-zero');
+  node.deltaLostEl.classList.remove('is-zero');
 }

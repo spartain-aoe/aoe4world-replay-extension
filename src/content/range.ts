@@ -195,6 +195,7 @@ export function applyRangeLegend(chart: Chart, timeline: TimelineElements | null
       stats[0],
       counts[0],
       valueMode,
+      true,
     );
     if (node.totalEl.textContent !== totalText) node.totalEl.textContent = totalText;
     setDeltaCells(
@@ -217,13 +218,13 @@ export function applyRangeLegend(chart: Chart, timeline: TimelineElements | null
         ? rangeStats(unit, unit._valueValues || unit.values, range.startIdx, range.endIdx, t0, t1, true)
         : counts;
       const label = escapeHtml(unit.unitLabel || unit.label || '');
-      const trained = formatArmyMetric(stats[2], counts[2], valueMode);
-      const lost = formatArmyMetric(stats[3], counts[3], valueMode);
+      const trained = formatArmyMetric(stats[2], counts[2], valueMode, true);
+      const lost = formatArmyMetric(stats[3], counts[3], valueMode, true);
       parts.push(
         `<span class="aoe4-inline-summary-entry">` +
           `${label} ` +
-          `<span class="aoe4-army-unit-delta-trained ${counts[2] === 0 && stats[2] === 0 ? 'is-zero' : ''}">${trained}</span> ` +
-          `<span class="aoe4-army-unit-delta-lost ${counts[3] === 0 && stats[3] === 0 ? 'is-zero' : ''}">${lost}</span>` +
+          `<span class="aoe4-army-unit-delta-trained">${trained}</span> ` +
+          `<span class="aoe4-army-unit-delta-lost">${lost}</span>` +
         `</span>`
       );
     }

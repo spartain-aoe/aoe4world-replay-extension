@@ -492,8 +492,8 @@ describe('applyRangeLegend', () => {
 
     assert.equal(rowEl.style.display, '');
     assert.equal(totalEl.textContent, '4');
-    assert.equal(deltaTrainedEl.textContent, '0');
-    assert.equal(deltaLostEl.textContent, '0');
+    assert.equal(deltaTrainedEl.textContent, '');
+    assert.equal(deltaLostEl.textContent, '');
     assert.ok(summaryLabelEl.innerHTML.includes('Existing Unit'));
   });
 
@@ -529,7 +529,7 @@ describe('applyRangeLegend', () => {
     applyRangeLegend(chart, timeline);
 
     assert.equal(rowEl.style.display, '');
-    assert.equal(totalEl.textContent, '0');
+    assert.equal(totalEl.textContent, '');
     assert.equal(deltaTrainedEl.textContent, '1');
     assert.equal(deltaLostEl.textContent, '1');
   });
@@ -740,6 +740,6 @@ describe('applyRangeLegend', () => {
 
     applyRangeLegend(chart, timeline);
     assert.equal(rowEl.style.display, '');
-    assert.equal(totalEl.textContent, '0'); // Math.abs(undefined || 0) = 0
+    assert.equal(totalEl.textContent, '');
   });
 });
