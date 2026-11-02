@@ -37,7 +37,7 @@ function makeChart(type = 'villager-efficiency') {
   return {
     type,
     value: 'aoe4plus:villager-efficiency',
-    title: 'Villager Efficiency',
+    title: 'Villager Production',
     options: { height: 280, villagerTarget: 120 },
     data: {
       labels: [0, 10],

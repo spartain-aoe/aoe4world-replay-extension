@@ -24,7 +24,9 @@ export const EXCLUDED_ARMY_UNITS = [
 export function isArmyUnit(item: BuildOrderItem): boolean {
   const icon = String(item.icon || '').toLowerCase();
   const unit = icon.split('/').pop() || icon;
-  return !EXCLUDED_ARMY_UNITS.some(excluded => unit.includes(excluded));
+  const mapped = resolveUnitByPbgid(item.pbgid);
+  const identity = `${unit} ${mapped?.k || ''} ${mapped?.n || ''}`.toLowerCase();
+  return !EXCLUDED_ARMY_UNITS.some(excluded => identity.includes(excluded));
 }
 
 export function unitCostTotal(unitData: UnitDataEntry | null | undefined): number {

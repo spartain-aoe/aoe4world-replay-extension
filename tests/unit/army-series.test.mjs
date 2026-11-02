@@ -33,6 +33,43 @@ describe('buildArmySeriesForPlayer', () => {
     assert.equal(result.length, 0);
   });
 
+  test('does not create an Other bucket from the Scots Ghillie Scout', () => {
+    const pbgid = 5947080;
+    const previous = pbgidUnitsMap.get(pbgid);
+    pbgidUnitsMap.set(pbgid, { n: 'Scout', k: 'scout', c: 65 });
+    try {
+      const combatUnits = Array.from({ length: 10 }, (_, index) => ({
+        type: 'Unit',
+        icon: `units/test_combat_${String.fromCharCode(97 + index)}`,
+        finished: Array.from({ length: index + 1 }, (_unused, eventIndex) => 10 + eventIndex),
+        destroyed: [],
+      }));
+      const player = {
+        name: 'Garlard',
+        civilization: 'scots',
+        buildOrder: [
+          {
+            type: 'Unit',
+            icon: 'icons/races/scots/units/ghillie_sco',
+            pbgid,
+            finished: [0],
+            destroyed: [90],
+          },
+          ...combatUnits,
+        ],
+      };
+
+      const result = buildArmySeriesForPlayer(player, [0, 20, 40, 60, 80, 100], '#4dabf7');
+
+      assert.equal(result.length, 10);
+      assert.ok(!result.some(series => series.label === 'Other'));
+      assert.ok(!result.some(series => series.mergeKey === 'scout'));
+    } finally {
+      if (previous) pbgidUnitsMap.set(pbgid, previous);
+      else pbgidUnitsMap.delete(pbgid);
+    }
+  });
+
   test('produces series for a single army unit type', () => {
     const player = {
       name: 'P1',

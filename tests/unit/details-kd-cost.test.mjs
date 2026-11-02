@@ -115,7 +115,7 @@ test('K/D Cost formatting matches the native K/D zero-loss conventions', () => {
   assert.equal(formatKdCostRatio(null, 100), '—');
 });
 
-test('count mismatches produce an explicit proportional estimate instead of hiding the ratio', () => {
+test('count mismatches reconcile the ratio without a visual approximation marker', () => {
   const summary = oneVsOneSummary();
   summary.players[1].buildOrder.push({
     type: 'Unit',
@@ -129,7 +129,7 @@ test('count mismatches produce an explicit proportional estimate instead of hidi
   assert.equal(alpha.lostUnitCost, 100);
   assert.equal(alpha.kdCostUnavailableReason, null);
   assert.match(alpha.kdCostApproximateReason, /2 recorded.*1 native/i);
-  assert.equal(formatKdCostRatio(alpha.killedUnitCost, alpha.lostUnitCost, true), '≈1.25');
+  assert.equal(formatKdCostRatio(alpha.killedUnitCost, alpha.lostUnitCost, true), '1.25');
 
   assert.equal(bravo.killedUnitCost, 100);
   assert.equal(bravo.lostUnitCost, 125);
@@ -222,8 +222,39 @@ test('installDetailsTableMetrics places K/D Cost after K/D and updates Military 
   assert.equal(document.querySelector('thead tr:first-child th:nth-child(6)').getAttribute('colspan'), '2');
   assert.equal(document.querySelector('tbody tr:first-child td[data-aoe4-details-metric="kd-cost"]').textContent.trim(), '2');
   assert.equal(document.querySelector('tbody tr:nth-child(2) td[data-aoe4-details-metric="kd-cost"]').textContent.trim(), '0.5');
+  assert.equal(
+    document.querySelector('tbody tr:first-child td[data-aoe4-details-metric="kd-cost"]').title,
+    'Enemy value killed: 200; own value lost: 100.',
+  );
 
   clearDetailsTableMetrics();
   assert.equal(document.querySelector('thead tr:first-child th:nth-child(5)').getAttribute('colspan'), '4');
   assert.equal(document.querySelector('thead tr:first-child th:nth-child(6)').getAttribute('colspan'), '1');
+});
+
+test('installDetailsTableMetrics omits K/D Cost outside 1v1 games', () => {
+  const { document, window } = parseHTML(`
+    <table>
+      <thead>
+        <tr><th></th><th colspan="1">Score</th><th colspan="1">Resources Spent</th><th colspan="1">Max. Workers</th><th colspan="4">Military</th><th colspan="1">Misc</th></tr>
+        <tr><th></th><th>Total</th><th>Food</th><th>Villagers</th><th>Prod.</th><th>Kills</th><th>Deaths</th><th>K/D</th><th>APM</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><a href="/players/1">Alpha</a></td><td>100</td><td>50</td><td>10</td><td>3</td><td>1</td><td>2</td><td>0.5</td><td>55</td></tr>
+        <tr><td><a href="/players/2">Bravo</a></td><td>90</td><td>40</td><td>9</td><td>2</td><td>2</td><td>1</td><td>2</td><td>50</td></tr>
+        <tr><td><a href="/players/3">Charlie</a></td><td>80</td><td>30</td><td>8</td><td>1</td><td>0</td><td>0</td><td></td><td>45</td></tr>
+      </tbody>
+    </table>
+  `);
+  globalThis.document = document;
+  globalThis.window = window;
+  const summary = oneVsOneSummary();
+  summary.players.push({ profileId: 3, name: 'Charlie', team: 0, buildOrder: [] });
+
+  assert.equal(installDetailsTableMetrics(summary), true);
+  const headers = [...document.querySelectorAll('thead tr:nth-child(2) th')].map(th => th.textContent.trim());
+  assert.ok(!headers.includes('K/D Cost'));
+  assert.equal(document.querySelector('td[data-aoe4-details-metric="kd-cost"]'), null);
+  assert.equal(document.querySelector('thead tr:first-child th:nth-child(5)').getAttribute('colspan'), '4');
+  assert.equal(document.querySelector('thead tr:first-child th:nth-child(6)').getAttribute('colspan'), '2');
 });

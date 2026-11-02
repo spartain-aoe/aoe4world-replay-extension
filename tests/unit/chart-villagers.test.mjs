@@ -122,7 +122,7 @@ test('buildVillagerEfficiencyCharts separates missed production from villagers k
     ['bravo', '#F60000'],
   ]));
 
-  assert.equal(chart.title, 'Villager Efficiency');
+  assert.equal(chart.title, 'Villager Production');
   assert.equal(chart.type, 'villager-efficiency');
   assert.deepEqual(chart.data.labels, [0, 10, 20, 30, 40, 50, 60]);
   assert.deepEqual(series(chart, 'Alpha', 'Actual').values, [6, 6, 7, 7, 7, 8, 7]);

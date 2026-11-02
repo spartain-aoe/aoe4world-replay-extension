@@ -27,7 +27,7 @@ const DETAILS_FINGERPRINT_ATTR = 'data-aoe4-details-fingerprint';
 const IDLE_TC_METRIC = 'idle-tc';
 const KD_COST_METRIC = 'kd-cost';
 const IDLE_TC_TITLE = 'Idle TC time from the official stats telemetry file. Includes overlapping idle time across TC-like producers.';
-const KD_COST_TITLE = 'Resource value of enemy non-villager units killed divided by resource value of own non-villager units lost, matching native K/D categories.';
+const KD_COST_TITLE = 'Enemy unit value killed divided by own unit value lost.';
 
 let detailsInstallToken = 0;
 let detailsTimers: ReturnType<typeof setTimeout>[] = [];
@@ -206,11 +206,7 @@ function calculateKdCostMetrics(players: PlayerSummary[]): Array<Pick<
   'killedUnitCost' | 'lostUnitCost' | 'kdCostUnavailableReason' | 'kdCostApproximateReason'
 >> {
   const losses = players.map(destroyedUnitCost);
-  const exactOneVsOne = players.length === 2 && (
-    players[0].team == null ||
-    players[1].team == null ||
-    players[0].team !== players[1].team
-  );
+  const exactOneVsOne = isSupportedKdCostGame(players);
 
   return players.map((player, index) => {
     const ownLosses = losses[index];
@@ -247,6 +243,14 @@ function calculateKdCostMetrics(players: PlayerSummary[]): Array<Pick<
         : approximateReasons.join(' '),
     };
   });
+}
+
+function isSupportedKdCostGame(players: PlayerSummary[]): boolean {
+  return players.length === 2 && (
+    players[0].team == null ||
+    players[1].team == null ||
+    players[0].team !== players[1].team
+  );
 }
 
 function statsMetricByPlayer(summary: GameSummary, statsMetrics: readonly StatsPlayerMetric[] | undefined): Map<string, StatsPlayerMetric> {
@@ -294,13 +298,12 @@ export function formatIdleTcTime(seconds: number | null): string {
 export function formatKdCostRatio(
   killedCost: number | null,
   lostCost: number | null,
-  approximate = false,
 ): string {
   if (killedCost == null || lostCost == null) return '—';
   let ratio = '';
   if (lostCost > 0) ratio = String(Math.round((killedCost / lostCost) * 100) / 100);
   else if (killedCost > 0) ratio = '∞';
-  return approximate && ratio ? `≈${ratio}` : ratio;
+  return ratio;
 }
 
 function headerText(cell: Element): string {
@@ -379,7 +382,7 @@ type DetailsHeaderPositions = {
   kdIndex: number | null;
 };
 
-function ensureDetailsHeaders(table: HTMLTableElement): DetailsHeaderPositions | null {
+function ensureDetailsHeaders(table: HTMLTableElement, includeKdCost: boolean): DetailsHeaderPositions | null {
   const rows = tableHeadRows(table);
   if (rows.length < 2) return null;
   const topRow = rows[0];
@@ -393,7 +396,7 @@ function ensureDetailsHeaders(table: HTMLTableElement): DetailsHeaderPositions |
   if (apmIndex < 0 && kdIndex < 0) return null;
 
   const extraByGroup = new Map<HTMLTableCellElement, number>();
-  for (const index of [apmIndex, kdIndex]) {
+  for (const index of [apmIndex, includeKdCost ? kdIndex : -1]) {
     if (index < 0) continue;
     const groupHeader = topHeaderForSubHeaderIndex(topRow, index);
     if (groupHeader) extraByGroup.set(groupHeader, (extraByGroup.get(groupHeader) || 0) + 1);
@@ -403,7 +406,7 @@ function ensureDetailsHeaders(table: HTMLTableElement): DetailsHeaderPositions |
     groupHeader.setAttribute(DETAILS_EXTRA_COLUMNS_ATTR, String(extra));
   }
 
-  if (kdIndex >= 0) {
+  if (includeKdCost && kdIndex >= 0) {
     subHeaders[kdIndex].after(
       metricHeader(KD_COST_METRIC, 'K/D Cost', KD_COST_TITLE),
     );
@@ -415,7 +418,7 @@ function ensureDetailsHeaders(table: HTMLTableElement): DetailsHeaderPositions |
   }
   return {
     apmIndex: apmIndex >= 0 ? apmIndex : null,
-    kdIndex: kdIndex >= 0 ? kdIndex : null,
+    kdIndex: includeKdCost && kdIndex >= 0 ? kdIndex : null,
   };
 }
 
@@ -466,14 +469,11 @@ function installMetricCells(row: HTMLTableRowElement, positions: DetailsHeaderPo
 
 function kdCostCellTitle(metric: DetailsPlayerMetrics): string {
   if (metric.kdCostUnavailableReason) {
-    return `K/D Cost unavailable: ${metric.kdCostUnavailableReason}`;
+    return 'K/D Cost unavailable.';
   }
   const killed = Math.round(metric.killedUnitCost || 0).toLocaleString();
   const lost = Math.round(metric.lostUnitCost || 0).toLocaleString();
-  if (metric.kdCostApproximateReason) {
-    return `K/D Cost estimate: ${metric.kdCostApproximateReason} Estimated enemy unit value killed: ${killed}; estimated own unit value lost: ${lost}.`;
-  }
-  return `${KD_COST_TITLE} Enemy unit value killed: ${killed}; own unit value lost: ${lost}.`;
+  return `Enemy value killed: ${killed}; own value lost: ${lost}.`;
 }
 
 export function installDetailsTableMetrics(summary: GameSummary, statsMetrics?: readonly StatsPlayerMetric[]): boolean {
@@ -481,8 +481,10 @@ export function installDetailsTableMetrics(summary: GameSummary, statsMetrics?: 
   if (!table) return false;
   const bodyRows = tableBodyRows(table);
   if (bodyRows.length === 0) return false;
+  const players = Array.isArray(summary.players) ? summary.players : [];
+  const includeKdCost = isSupportedKdCostGame(players);
   const metrics = calculateDetailsPlayerMetrics(summary, statsMetrics);
-  const fingerprint = JSON.stringify(metrics.map(item => [
+  const fingerprint = JSON.stringify([includeKdCost, metrics.map(item => [
     item.profileId,
     item.name,
     item.idleTcSeconds,
@@ -490,12 +492,12 @@ export function installDetailsTableMetrics(summary: GameSummary, statsMetrics?: 
     item.lostUnitCost,
     item.kdCostUnavailableReason,
     item.kdCostApproximateReason,
-  ]));
+  ])]);
   const nativeSubHeaders = tableHeadRows(table)[1]
     ? rowCells(tableHeadRows(table)[1]).filter(cell => !cell.hasAttribute(DETAILS_METRIC_ATTR))
     : [];
   const hasKdColumn = nativeSubHeaders.some(cell => /^K\s*\/\s*D$/i.test(headerText(cell)));
-  const expectedMetrics = hasKdColumn ? [IDLE_TC_METRIC, KD_COST_METRIC] : [IDLE_TC_METRIC];
+  const expectedMetrics = hasKdColumn && includeKdCost ? [IDLE_TC_METRIC, KD_COST_METRIC] : [IDLE_TC_METRIC];
   // Require every body row to actually carry the metric cell, not just the
   // table to have a matching element somewhere: an SPA re-render can wipe the
   // body cells while leaving the injected header (and the table's fingerprint
@@ -509,7 +511,7 @@ export function installDetailsTableMetrics(summary: GameSummary, statsMetrics?: 
   ) {
     return true;
   }
-  const positions = ensureDetailsHeaders(table);
+  const positions = ensureDetailsHeaders(table, includeKdCost);
   if (positions == null) return false;
 
   const byProfileId = new Map(metrics.filter(item => item.profileId).map(item => [item.profileId, item]));
@@ -524,11 +526,7 @@ export function installDetailsTableMetrics(summary: GameSummary, statsMetrics?: 
       updateMetricCell(
         row,
         KD_COST_METRIC,
-        formatKdCostRatio(
-          rowMetrics.killedUnitCost,
-          rowMetrics.lostUnitCost,
-          Boolean(rowMetrics.kdCostApproximateReason),
-        ),
+        formatKdCostRatio(rowMetrics.killedUnitCost, rowMetrics.lostUnitCost),
         kdCostCellTitle(rowMetrics),
       );
     }

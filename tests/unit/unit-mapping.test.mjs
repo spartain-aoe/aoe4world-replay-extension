@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { isArmyUnit, EXCLUDED_ARMY_UNITS, unitCostTotal, unitMergeKey } from '../../src/content/unit-mapping.ts';
+import { pbgidUnitsMap } from '../../src/content/pbgid-map.ts';
 
 test('isArmyUnit excludes villagers/workers/scouts/livestock', () => {
   assert.equal(isArmyUnit({ icon: 'units/villager_2' }), false);
@@ -8,6 +9,21 @@ test('isArmyUnit excludes villagers/workers/scouts/livestock', () => {
   assert.equal(isArmyUnit({ icon: 'units/sheep' }), false);
   assert.equal(isArmyUnit({ icon: 'units/trader' }), false);
   assert.equal(isArmyUnit({ icon: 'units/monk' }), false);
+});
+
+test('isArmyUnit excludes the Scots Ghillie when its PBGID resolves to the scout family', () => {
+  const pbgid = 5947080;
+  const previous = pbgidUnitsMap.get(pbgid);
+  pbgidUnitsMap.set(pbgid, { n: 'Scout', k: 'scout', c: 65 });
+  try {
+    assert.equal(isArmyUnit({
+      icon: 'icons/races/scots/units/ghillie_sco',
+      pbgid,
+    }), false);
+  } finally {
+    if (previous) pbgidUnitsMap.set(pbgid, previous);
+    else pbgidUnitsMap.delete(pbgid);
+  }
 });
 
 test('isArmyUnit accepts combat units', () => {

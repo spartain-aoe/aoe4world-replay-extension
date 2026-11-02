@@ -1,7 +1,7 @@
 /**
  * Integration coverage for the Summary+ features added on this branch:
  * - Idle TC and K/D Cost details-table columns.
- * - Villager Efficiency ideal/actual lines and Ideal-anchored debt bands.
+ * - Villager Production ideal/actual lines and Ideal-anchored debt bands.
  * - Summary+ chart option ordering.
  * - Army Count/Value toggle labels and Value-mode data for override-only PBGIDs.
  * - Range-selection legend deltas in Value mode are resource-weighted, not counts.
@@ -579,7 +579,7 @@ async function installNumudanRoutesWithDelayedPbgidMap(delayMs = 2500) {
     assert(donation?.cells.includes('0:45'), `DonationDonation Idle TC not rendered as 0:45: ${JSON.stringify(donation)}`);
   });
 
-  await test('K/D Cost is placed after K/D and marks reconciled source events as estimates', async () => {
+  await test('K/D Cost is placed after K/D with plain ratios and concise tooltips', async () => {
     await page.waitForFunction(() => [...document.querySelectorAll('th')]
       .some(th => (th.textContent || '').trim() === 'K/D Cost'), null, { timeout: 10000 });
     const state = await page.evaluate(() => {
@@ -597,9 +597,9 @@ async function installNumudanRoutesWithDelayedPbgidMap(delayMs = 2500) {
     );
     assert(
       state.cells.length === 2 &&
-        state.cells.map(cell => cell.text).join(',') === '≈0.59,≈1.7' &&
-        state.cells.every(cell => /estimate|scaled proportionally/i.test(cell.title)),
-      `reconciled unit events should be marked as estimates: ${JSON.stringify(state.cells)}`,
+        state.cells.map(cell => cell.text).join(',') === '0.59,1.7' &&
+        state.cells.every(cell => /^Enemy value killed: [\d,]+; own value lost: [\d,]+\.$/.test(cell.title)),
+      `K/D Cost should use plain ratios and concise tooltips: ${JSON.stringify(state.cells)}`,
     );
     assert(
       state.groups.find(group => group.text === 'Military')?.colspan === '5',
@@ -628,7 +628,7 @@ async function installNumudanRoutesWithDelayedPbgidMap(delayMs = 2500) {
       'Army Composition',
       'Army Value Lead',
       'Destroyed Value',
-      'Villager Efficiency',
+      'Villager Production',
       'Resources Gathered: Total',
       'Resources Gathered: Food',
       'Resources Gathered: Wood',
@@ -652,21 +652,21 @@ async function installNumudanRoutesWithDelayedPbgidMap(delayMs = 2500) {
     );
   });
 
-  await test('Villager Efficiency can be selected and exposes all four tooltip metrics', async () => {
+  await test('Villager Production can be selected and exposes all four tooltip metrics', async () => {
     const selected = await page.evaluate(() => {
       const select = document.querySelector('select');
       const option = [...(select?.querySelectorAll('option') || [])]
-        .find(opt => (opt.textContent || '').trim() === 'Villager Efficiency');
+        .find(opt => (opt.textContent || '').trim() === 'Villager Production');
       if (!select || !option) return false;
       select.value = option.value;
       select.dispatchEvent(new Event('input', { bubbles: true }));
       select.dispatchEvent(new Event('change', { bubbles: true }));
       return true;
     });
-    assert(selected, 'Villager Efficiency option not found');
+    assert(selected, 'Villager Production option not found');
     await page.waitForFunction(() => {
       const heading = [...document.querySelectorAll('h3')]
-        .find(h => (h.textContent || '').includes('Villager Efficiency'));
+        .find(h => (h.textContent || '').includes('Villager Production'));
       const canvas = document.querySelector('canvas[data-aoe4-summary-canvas]');
       if (!heading || !canvas) return false;
       const style = getComputedStyle(canvas);
@@ -682,11 +682,11 @@ async function installNumudanRoutesWithDelayedPbgidMap(delayMs = 2500) {
           opacity: row.style.opacity,
         }))
     );
-    assert(initialRadios.length === 2, `expected two Villager Efficiency radios: ${JSON.stringify(initialRadios)}`);
+    assert(initialRadios.length === 2, `expected two Villager Production radios: ${JSON.stringify(initialRadios)}`);
     assert(initialRadios.filter(row => row.checked === 'true').length === 1,
-      `Villager Efficiency should initially show one player: ${JSON.stringify(initialRadios)}`);
+      `Villager Production should initially show one player: ${JSON.stringify(initialRadios)}`);
     assert(initialRadios.filter(row => row.checked === 'false').every(row => row.opacity === '0.35'),
-      `unselected Villager Efficiency radios should be dimmed: ${JSON.stringify(initialRadios)}`);
+      `unselected Villager Production radios should be dimmed: ${JSON.stringify(initialRadios)}`);
 
     const switchedRadio = await page.evaluate(() => {
       const rows = [...document.querySelectorAll('.flex.items-center.cursor-pointer[role="radio"]')];
@@ -703,15 +703,15 @@ async function installNumudanRoutesWithDelayedPbgidMap(delayMs = 2500) {
         })),
       };
     });
-    assert(switchedRadio, 'could not switch Villager Efficiency player radio');
+    assert(switchedRadio, 'could not switch Villager Production player radio');
     assert(switchedRadio.rows.filter(row => row.checked === 'true').length === 1,
       `radio switch should leave exactly one player selected: ${JSON.stringify(switchedRadio)}`);
     assert(switchedRadio.rows.find(row => row.text === switchedRadio.targetText)?.checked === 'true',
-      `clicked Villager Efficiency radio was not selected: ${JSON.stringify(switchedRadio)}`);
+      `clicked Villager Production radio was not selected: ${JSON.stringify(switchedRadio)}`);
 
     const canvas = page.locator('canvas[data-aoe4-summary-canvas]');
     const box = await canvas.boundingBox();
-    assert(box, 'Villager Efficiency canvas has no bounding box');
+    assert(box, 'Villager Production canvas has no bounding box');
     await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.5);
     await page.waitForFunction(() => {
       const tooltip = document.querySelector('.aoe4-summary-html-tooltip');

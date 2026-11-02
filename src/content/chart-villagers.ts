@@ -724,7 +724,7 @@ export function buildVillagerEfficiencyCharts(
 
   return [{
     value: `${SUMMARY_PLUS_PREFIX}villager-efficiency`,
-    title: 'Villager Efficiency',
+    title: 'Villager Production',
     meta: villagerEfficiencyMeta(DEFAULT_VILLAGER_TARGET, false),
     data: { labels, series },
     bands,
