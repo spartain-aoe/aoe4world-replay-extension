@@ -53,9 +53,6 @@ function sortedEventPairs(times: number[], costs: number[]): { times: number[]; 
   };
 }
 
-// Normalizes a unit display label to a singular merge-key so plural variants
-// (e.g. "Wynguard Rangers" -> "wynguard ranger", "Wynguard Footmen" -> "wynguard footman")
-// collapse onto their singular counterpart in the final series list.
 export function normalizeLabelForMerge(label: string): string {
   const lower = String(label || '').toLowerCase().trim();
   if (!lower) return '';

@@ -1,16 +1,31 @@
 import type { Chart, LegendNodeMeta, LegendSummaryNode, LegendUnitNode } from './types.ts';
 
-function isSummaryNode(key: string, _meta: LegendNodeMeta): _meta is LegendSummaryNode {
+type ArmyLegendMetrics = Pick<
+  typeof import('./army-legend-metrics.ts'),
+  'activeAt' | 'formatArmyMetric' | 'formatArmySummary' | 'rangeStats'
+>;
+
+export const {
+  activeAt,
+  formatArmyMetric,
+  formatArmySummary,
+  rangeStats,
+} = (globalThis as typeof globalThis & {
+  __aoe4CombatMetrics: ArmyLegendMetrics;
+}).__aoe4CombatMetrics;
+
+export function isSummaryNode(key: string, _meta: LegendNodeMeta): _meta is LegendSummaryNode {
   return key.startsWith('__summary__');
 }
 
-function isUnitNode(key: string, _meta: LegendNodeMeta): _meta is LegendUnitNode {
+export function isUnitNode(key: string, _meta: LegendNodeMeta): _meta is LegendUnitNode {
   return !key.startsWith('__summary__');
 }
 
 export function updateLegendLive(chart: Chart, index: number, closestKey: string | null | undefined): void {
   const nodes = chart._legendNodes;
   if (!nodes || !nodes.size) return;
+  const valueMode = chart.options?.armyMode === 'value';
 
   const expandedPlayers = new Set<string>();
   for (const [key, meta] of nodes) {
@@ -26,23 +41,39 @@ export function updateLegendLive(chart: Chart, index: number, closestKey: string
     if (!item.key || !item.playerName || !expandedPlayers.has(item.playerName)) continue;
     const node = nodes.get(item.key);
     if (!node || !isUnitNode(item.key, node)) continue;
-    const value = Math.abs(item.values[index] || 0);
-    const previous = index > 0 ? Math.abs(item.values[index - 1] || 0) : value;
-    const next = index < numSamples - 1 ? Math.abs(item.values[index + 1] || 0) : value;
-    const delta = value - previous;
+    const countValues = item._countValues || item.values;
+    const valueValues = item._valueValues || item.values;
+    const count = activeAt(countValues, index);
+    const previousCount = index > 0 ? activeAt(countValues, index - 1) : count;
+    const nextCount = index < numSamples - 1 ? activeAt(countValues, index + 1) : count;
+    const value = valueMode ? activeAt(valueValues, index) : count;
+    const previousValue = index > 0
+      ? (valueMode ? activeAt(valueValues, index - 1) : previousCount)
+      : value;
 
-    const isTransition = value === 0 && (previous !== 0 || next !== 0);
-    if (value === 0 && !isTransition) {
+    const isTransition = count === 0 && (previousCount !== 0 || nextCount !== 0);
+    if (count === 0 && !isTransition) {
       node.rowEl.style.display = 'none';
       continue;
     }
     node.rowEl.style.display = '';
 
-    const text = Math.round(value).toLocaleString();
+    const text = formatArmyMetric(value, count, valueMode);
     if (node.totalEl.textContent !== text) node.totalEl.textContent = text;
-    if (delta === 0) setDeltaCells(node, null, null);
-    else if (delta > 0) setDeltaCells(node, delta, 0);
-    else setDeltaCells(node, 0, -delta);
+    const countDelta = count - previousCount;
+    const valueDelta = value - previousValue;
+    if (countDelta === 0 && valueDelta === 0) {
+      setDeltaCells(node, null, null);
+    } else {
+      setDeltaCells(
+        node,
+        Math.max(0, valueDelta),
+        Math.max(0, -valueDelta),
+        valueMode,
+        Math.max(0, countDelta),
+        Math.max(0, -countDelta),
+      );
+    }
     if (closestKey === item.key) node.rowEl.classList.add('is-closest');
     else node.rowEl.classList.remove('is-closest');
   }
@@ -51,8 +82,11 @@ export function updateLegendLive(chart: Chart, index: number, closestKey: string
     if (!isSummaryNode(key, meta)) continue;
     const parts: string[] = [];
     for (const u of meta.units) {
-      const val = Math.abs(u.values[index] || 0);
-      if (val > 0) parts.push(`${u.unitLabel || u.label}: ${Math.round(val).toLocaleString()}`);
+      const count = activeAt(u._countValues || u.values, index);
+      if (count > 0) {
+        const value = valueMode ? activeAt(u._valueValues || u.values, index) : count;
+        parts.push(`${u.unitLabel || u.label}: ${formatArmyMetric(value, count, valueMode)}`);
+      }
     }
     const text = parts.join(', ') || '—';
     if (meta.summaryLabelEl.textContent !== text) meta.summaryLabelEl.textContent = text;
@@ -62,11 +96,14 @@ export function updateLegendLive(chart: Chart, index: number, closestKey: string
 export function resetLegendSummary(chart: Chart): void {
   const nodes = chart._legendNodes;
   if (!nodes) return;
+  const valueMode = chart.options?.armyMode === 'value';
 
   for (const [key, node] of nodes) {
     if (!isUnitNode(key, node)) continue;
     node.rowEl.style.display = '';
-    const text = Math.round(node.summaryTotal).toLocaleString();
+    const count = node.summaryTotal;
+    const value = valueMode ? (node.summaryValue || 0) : count;
+    const text = formatArmyMetric(value, count, valueMode);
     if (node.totalEl.textContent !== text) node.totalEl.textContent = text;
     setDeltaCells(node, null, null);
     node.rowEl.classList.remove('is-closest');
@@ -74,12 +111,19 @@ export function resetLegendSummary(chart: Chart): void {
 
   for (const [key, meta] of nodes) {
     if (!isSummaryNode(key, meta)) continue;
-    const text = meta.units.map(u => u.unitLabel || u.label || '').join(', ');
+    const text = formatArmySummary(meta.units, valueMode);
     if (meta.summaryLabelEl.textContent !== text) meta.summaryLabelEl.textContent = text;
   }
 }
 
-export function setDeltaCells(node: LegendUnitNode | null | undefined, trained: number | null, lost: number | null): void {
+export function setDeltaCells(
+  node: LegendUnitNode | null | undefined,
+  trained: number | null,
+  lost: number | null,
+  valueMode = false,
+  trainedCount = trained,
+  lostCount = lost,
+): void {
   if (!node?.deltaTrainedEl || !node?.deltaLostEl) return;
   if (trained == null && lost == null) {
     if (node.deltaTrainedEl.textContent !== '') node.deltaTrainedEl.textContent = '';
@@ -88,10 +132,10 @@ export function setDeltaCells(node: LegendUnitNode | null | undefined, trained: 
     node.deltaLostEl.classList.remove('is-zero');
     return;
   }
-  const t = Math.round(trained || 0).toLocaleString();
-  const l = Math.round(lost || 0).toLocaleString();
+  const t = formatArmyMetric(trained || 0, trainedCount || 0, valueMode);
+  const l = formatArmyMetric(lost || 0, lostCount || 0, valueMode);
   if (node.deltaTrainedEl.textContent !== t) node.deltaTrainedEl.textContent = t;
   if (node.deltaLostEl.textContent !== l) node.deltaLostEl.textContent = l;
-  node.deltaTrainedEl.classList.toggle('is-zero', (trained || 0) === 0);
-  node.deltaLostEl.classList.toggle('is-zero', (lost || 0) === 0);
+  node.deltaTrainedEl.classList.toggle('is-zero', (trained || 0) === 0 && (trainedCount || 0) === 0);
+  node.deltaLostEl.classList.toggle('is-zero', (lost || 0) === 0 && (lostCount || 0) === 0);
 }

@@ -1,6 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { countInRange, RANGE_DRAG_THRESHOLD_PX } from '../../src/content/range.ts';
+import * as armyLegendMetrics from '../../src/content/army-legend-metrics.ts';
+
+globalThis.__aoe4CombatMetrics = armyLegendMetrics;
+
+const { countInRange, RANGE_DRAG_THRESHOLD_PX } = await import('../../src/content/range.ts');
 
 test('countInRange empty/missing arrays', () => {
   assert.equal(countInRange(null, 0, 100), 0);

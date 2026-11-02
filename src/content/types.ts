@@ -225,6 +225,7 @@ export interface LegendUnitNode {
   deltaTrainedEl: HTMLElement;
   deltaLostEl: HTMLElement;
   summaryTotal: number;
+  summaryValue?: number;
 }
 
 export interface LegendSummaryNode {

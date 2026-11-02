@@ -660,8 +660,8 @@ function renderTimelineMetric(timeline: TimelineElements, chart: Chart): void {
   const canvas = ensureSummaryCanvas(timeline);
   canvas.style.display = '';
   if (chart.type === 'army') {
-    renderArmyUnitLegend(timeline, chart);
     renderArmyModeToggle(timeline, chart);
+    renderArmyUnitLegend(timeline, chart);
     detachVillagerTargetControl(timeline);
   } else if (chart.type === 'villager-efficiency') {
     removeArmyUnitLegend(timeline);

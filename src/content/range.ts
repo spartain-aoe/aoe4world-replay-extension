@@ -1,13 +1,18 @@
 import { escapeHtml } from './dom.ts';
 import { drawTimelineCanvasChart } from './canvas-render.ts';
-import { resetLegendSummary, setDeltaCells } from './legend-live.ts';
+import {
+  activeAt,
+  formatArmyMetric,
+  isSummaryNode,
+  isUnitNode,
+  rangeStats,
+  resetLegendSummary,
+  setDeltaCells,
+} from './legend-live.ts';
 import type {
   Chart,
   ChartBoxExtensions,
   DragState,
-  LegendNodeMeta,
-  LegendSummaryNode,
-  LegendUnitNode,
   RangeState,
   TimelineElements,
 } from './types.ts';
@@ -15,14 +20,6 @@ import type {
 type ChartBoxElement = HTMLElement & ChartBoxExtensions;
 
 export const RANGE_DRAG_THRESHOLD_PX = 4;
-
-function isSummaryNode(key: string, _meta: LegendNodeMeta): _meta is LegendSummaryNode {
-  return key.startsWith('__summary__');
-}
-
-function isUnitNode(key: string, _meta: LegendNodeMeta): _meta is LegendUnitNode {
-  return !key.startsWith('__summary__');
-}
 
 export function clientXToSampleIndex(canvas: HTMLCanvasElement, chart: Chart, clientX: number): number {
   const rect = canvas.getBoundingClientRect();
@@ -96,59 +93,6 @@ export function countAfterStartInRange(sortedTimes: number[] | undefined, t0: nu
   return lo - start;
 }
 
-function weightedAfterStartInRange(
-  sortedTimes: number[] | undefined,
-  sortedWeights: number[] | undefined,
-  t0: number,
-  t1: number,
-): number {
-  if (!sortedTimes?.length) return 0;
-  let total = 0;
-  for (let i = 0; i < sortedTimes.length; i++) {
-    const time = sortedTimes[i];
-    if (time <= t0) continue;
-    if (time > t1) break;
-    total += sortedWeights?.[i] || 0;
-  }
-  return total;
-}
-
-function formatRangeNumber(value: number): string {
-  return Math.round(value).toLocaleString();
-}
-
-function activeValueAt(item: { values?: number[] }, index: number): number {
-  return Math.max(0, Math.round(Math.abs(item.values?.[index] || 0)));
-}
-
-function rangeUnitStats(
-  item: { values?: number[]; _finishedTimes?: number[]; _destroyedTimes?: number[]; _finishedCosts?: number[]; _destroyedCosts?: number[] },
-  startIdx: number,
-  endIdx: number,
-  t0: number,
-  t1: number,
-  valueMode = false,
-): { initial: number; end: number; trained: number; lost: number; relevant: boolean } {
-  const initial = activeValueAt(item, startIdx);
-  const end = activeValueAt(item, endIdx);
-  const trained = valueMode
-    ? Math.round(weightedAfterStartInRange(item._finishedTimes, item._finishedCosts, t0, t1))
-    : countAfterStartInRange(item._finishedTimes, t0, t1);
-  const rawLost = valueMode
-    ? Math.round(weightedAfterStartInRange(item._destroyedTimes, item._destroyedCosts, t0, t1))
-    : countAfterStartInRange(item._destroyedTimes, t0, t1);
-  const inferredLost = Math.max(0, initial + trained - end);
-  const maxPossibleLost = initial + trained;
-  const lost = Math.min(maxPossibleLost, Math.max(rawLost, inferredLost));
-  return {
-    initial,
-    end,
-    trained,
-    lost,
-    relevant: initial > 0 || end > 0 || trained > 0 || lost > 0,
-  };
-}
-
 export function ensureResetButton(timeline: TimelineElements | null): HTMLButtonElement | null {
   const chartBox = timeline?.chartBox;
   if (!chartBox) return null;
@@ -186,10 +130,6 @@ export function syncRangeUi(timeline: TimelineElements | null, chart: Chart | nu
   const range = getActiveRange(chartBox, chart);
   const isArmy = chart.type === 'army';
   if (btn) btn.style.display = isArmy && range ? '' : 'none';
-  // The army-mode toggle and the range Reset button both anchor to the
-  // top-right of the chart box. Hide the toggle while a range is active so
-  // they don't stack and so the toggle's opaque background doesn't sit on
-  // top of the in-range translucent selection draw.
   const toggle = timeline.__aoe4ArmyModeToggle as HTMLElement | null | undefined;
   if (toggle) toggle.style.display = (isArmy && range) ? 'none' : '';
 
@@ -241,30 +181,49 @@ export function applyRangeLegend(chart: Chart, timeline: TimelineElements | null
       continue;
     }
     if (!item.playerName || !expandedPlayers.has(item.playerName)) continue;
-    const stats = rangeUnitStats(item, range.startIdx, range.endIdx, t0, t1, valueMode);
-    if (!stats.relevant) {
+    const counts = rangeStats(item, item._countValues || item.values, range.startIdx, range.endIdx, t0, t1);
+    const stats = valueMode
+      ? rangeStats(item, item._valueValues || item.values, range.startIdx, range.endIdx, t0, t1, true)
+      : counts;
+    if (!counts.some(Boolean)) {
       node.rowEl.style.display = 'none';
       continue;
     }
     node.rowEl.style.display = '';
     node.rowEl.classList.remove('is-closest');
-    const totalText = formatRangeNumber(stats.initial);
+    const totalText = formatArmyMetric(
+      stats[0],
+      counts[0],
+      valueMode,
+    );
     if (node.totalEl.textContent !== totalText) node.totalEl.textContent = totalText;
-    setDeltaCells(node, stats.trained, stats.lost);
+    setDeltaCells(
+      node,
+      stats[2],
+      stats[3],
+      valueMode,
+      counts[2],
+      counts[3],
+    );
   }
 
   for (const [key, meta] of nodes) {
     if (!isSummaryNode(key, meta)) continue;
     const parts: string[] = [];
     for (const unit of meta.units) {
-      const stats = rangeUnitStats(unit, range.startIdx, range.endIdx, t0, t1, valueMode);
-      if (!stats.relevant) continue;
+      const counts = rangeStats(unit, unit._countValues || unit.values, range.startIdx, range.endIdx, t0, t1);
+      if (!counts.some(Boolean)) continue;
+      const stats = valueMode
+        ? rangeStats(unit, unit._valueValues || unit.values, range.startIdx, range.endIdx, t0, t1, true)
+        : counts;
       const label = escapeHtml(unit.unitLabel || unit.label || '');
+      const trained = formatArmyMetric(stats[2], counts[2], valueMode);
+      const lost = formatArmyMetric(stats[3], counts[3], valueMode);
       parts.push(
         `<span class="aoe4-inline-summary-entry">` +
           `${label} ` +
-          `<span class="aoe4-army-unit-delta-trained ${stats.trained === 0 ? 'is-zero' : ''}">${formatRangeNumber(stats.trained)}</span> ` +
-          `<span class="aoe4-army-unit-delta-lost ${stats.lost === 0 ? 'is-zero' : ''}">${formatRangeNumber(stats.lost)}</span>` +
+          `<span class="aoe4-army-unit-delta-trained ${counts[2] === 0 && stats[2] === 0 ? 'is-zero' : ''}">${trained}</span> ` +
+          `<span class="aoe4-army-unit-delta-lost ${counts[3] === 0 && stats[3] === 0 ? 'is-zero' : ''}">${lost}</span>` +
         `</span>`
       );
     }

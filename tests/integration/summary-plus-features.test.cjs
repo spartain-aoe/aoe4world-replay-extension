@@ -784,11 +784,12 @@ async function installNumudanRoutesWithDelayedPbgidMap(delayMs = 2500) {
       const rows = [...document.querySelectorAll('.aoe4-legend-breakdown[data-player-name="spartain"] .aoe4-army-unit-row')]
         .map(row => {
           const total = row.querySelector('.aoe4-army-unit-total')?.textContent?.trim() || '';
-          const toNumber = value => Number(value.replace(/[^\d.-]/g, '')) || 0;
+          const metric = /^([\d,]+) \(([\d,]+)\)$/.exec(total);
           return {
             text: (row.textContent || '').replace(/\s+/g, ' ').trim(),
             total,
-            totalNumber: toNumber(total),
+            totalNumber: metric ? Number(metric[1].replace(/,/g, '')) : 0,
+            countNumber: metric ? Number(metric[2].replace(/,/g, '')) : 0,
           };
         });
       const rowFor = label => rows.find(row => row.text.includes(label));
@@ -801,8 +802,10 @@ async function installNumudanRoutesWithDelayedPbgidMap(delayMs = 2500) {
     const toggleTexts = state.labels.map(item => item.text);
     assert(JSON.stringify(toggleTexts) === JSON.stringify(['Count', 'Value']), `unexpected toggle labels: ${JSON.stringify(toggleTexts)}`);
     assert(state.labels.find(item => item.text === 'Value')?.pressed === 'true', `Value button not active: ${JSON.stringify(state.labels)}`);
-    assert(state.mohe?.totalNumber > 0 && /res$/.test(state.mohe.total), `Mohe value total missing from legend: ${JSON.stringify(state.mohe)}`);
-    assert(state.iron?.totalNumber > 0 && /res$/.test(state.iron.total), `Iron Pagoda value total missing from legend: ${JSON.stringify(state.iron)}`);
+    assert(state.mohe?.totalNumber > 0 && state.mohe?.countNumber > 0 && !/\bres\b/i.test(state.mohe.total),
+      `Mohe cost/count total missing from legend: ${JSON.stringify(state.mohe)}`);
+    assert(state.iron?.totalNumber > 0 && state.iron?.countNumber > 0 && !/\bres\b/i.test(state.iron.total),
+      `Iron Pagoda cost/count total missing from legend: ${JSON.stringify(state.iron)}`);
   });
 
   await test('Value-mode range legend shows resource deltas and hides Count/Value toggle', async () => {
@@ -817,7 +820,10 @@ async function installNumudanRoutesWithDelayedPbgidMap(delayMs = 2500) {
           const lostEl = row.querySelector('.aoe4-army-unit-delta-lost');
           const trained = row.querySelector('.aoe4-army-unit-delta-trained')?.textContent?.trim() || '';
           const lost = row.querySelector('.aoe4-army-unit-delta-lost')?.textContent?.trim() || '';
-          const toNumber = value => Number(value.replace(/,/g, '')) || 0;
+          const toNumber = value => {
+            const metric = /^([\d,]+) \(([\d,]+)\)$/.exec(value);
+            return metric ? Number(metric[1].replace(/,/g, '')) : 0;
+          };
           const rect = el => {
             const r = el?.getBoundingClientRect?.();
             return r ? { left: r.left, right: r.right, width: r.width } : null;
@@ -826,6 +832,8 @@ async function installNumudanRoutesWithDelayedPbgidMap(delayMs = 2500) {
             text: (row.textContent || '').replace(/\s+/g, ' ').trim(),
             trained,
             lost,
+            formatted: [trained, lost].filter(Boolean).every(value => /^[\d,]+ \([\d,]+\)$/.test(value)),
+            hasRes: /\bres\b/i.test(`${trained} ${lost}`),
             trainedNumber: toNumber(trained),
             lostNumber: toNumber(lost),
             totalRect: rect(totalEl),
@@ -840,6 +848,8 @@ async function installNumudanRoutesWithDelayedPbgidMap(delayMs = 2500) {
       };
     });
     assert(state.toggleDisplay === 'none', `Count/Value toggle should hide while range is active: ${JSON.stringify(state)}`);
+    assert(state.rows.every(row => row.formatted && !row.hasRes),
+      `Value range metrics must use cost (count) without res: ${JSON.stringify(state.rows)}`);
     const resourceDeltaRows = state.rows.filter(row => row.trainedNumber >= 100 || row.lostNumber >= 100);
     assert(resourceDeltaRows.length > 0, `expected resource-sized deltas in Value mode, got rows: ${JSON.stringify(state.rows)}`);
     assert(

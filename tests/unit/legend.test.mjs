@@ -1,6 +1,7 @@
 import { test, describe, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseHTML } from 'linkedom';
+import * as armyLegendMetrics from '../../src/content/army-legend-metrics.ts';
 
 const { document, window, HTMLElement } = parseHTML('<!DOCTYPE html><html><body></body></html>');
 globalThis.document = document;
@@ -14,19 +15,21 @@ globalThis.getComputedStyle = () => ({
 });
 globalThis.performance = globalThis.performance || { now: () => Date.now() };
 
-import {
+globalThis.__aoe4CombatMetrics = armyLegendMetrics;
+
+const {
   renderArmyUnitLegend,
   renderArmyUnitLegendNow,
   armyLegendUnitRow,
   seriesColorChip,
   removeArmyUnitLegend,
   refreshArmyLegendNames,
-} from '../../src/content/legend.ts';
-import {
+} = await import('../../src/content/legend.ts');
+const {
   updateLegendLive,
   resetLegendSummary,
   setDeltaCells,
-} from '../../src/content/legend-live.ts';
+} = await import('../../src/content/legend-live.ts');
 
 function makeCtx() {
   const calls = [];
@@ -71,6 +74,7 @@ function makeLegendNodes(doc, units, playerName) {
     nodes.set(u.key, {
       ...makeDeltaNode(doc),
       summaryTotal: u.createdTotal || 0,
+      summaryValue: u._valueTotal || 0,
     });
   }
   const summaryEl = doc.createElement('span');
@@ -373,6 +377,26 @@ describe('resetLegendSummary', () => {
     assert.ok(!node.rowEl.classList.contains('is-closest'));
   });
 
+  test('resets value-mode totals and collapsed summaries as cost with count', () => {
+    const doc = parseHTML('<!DOCTYPE html><html><body></body></html>').document;
+    const unit = {
+      ...makeUnit('u1', 'Knight', [0, 240, 480], 2),
+      _countValues: [0, 1, 2],
+      _valueValues: [0, 240, 480],
+      _valueTotal: 480,
+    };
+    const chart = makeChart([unit]);
+    chart.options = { armyMode: 'value' };
+    chart._legendNodes = makeLegendNodes(doc, [unit], 'Alice');
+
+    resetLegendSummary(chart);
+
+    const node = chart._legendNodes.get('u1');
+    const summaryMeta = chart._legendNodes.get('__summary__Alice');
+    assert.equal(node.totalEl.textContent, '480 (2)');
+    assert.equal(summaryMeta.summaryLabelEl.textContent, 'Knight: 480 (2)');
+  });
+
   test('restores summary label text', () => {
     const doc = parseHTML('<!DOCTYPE html><html><body></body></html>').document;
     const units = [
@@ -534,6 +558,41 @@ describe('updateLegendLive', () => {
 
     const summaryMeta = chart._legendNodes.get('__summary__Alice');
     assert.equal(summaryMeta.summaryLabelEl.textContent, 'Spear: 10, Archer: 5');
+  });
+
+  test('value-mode live legend shows parallel cost and count metrics', () => {
+    const doc = parseHTML('<!DOCTYPE html><html><body></body></html>').document;
+    const known = {
+      ...makeUnit('u1', 'Knight', [0, 240, 480], 2),
+      _countValues: [0, 1, 2],
+      _valueValues: [0, 240, 480],
+      _valueTotal: 480,
+    };
+    const unknown = {
+      ...makeUnit('u2', 'Unknown Unit', [0, 0, 0], 2),
+      _countValues: [0, 1, 2],
+      _valueValues: [0, 0, 0],
+      _valueTotal: 0,
+    };
+    const chart = makeChart([known, unknown]);
+    chart.options = { armyMode: 'value' };
+    chart._legendNodes = makeLegendNodes(doc, [known, unknown], 'Alice');
+    chart._legendNodes.get('__summary__Alice').panelEl.style.display = '';
+
+    updateLegendLive(chart, 1, null);
+
+    const knownNode = chart._legendNodes.get('u1');
+    const unknownNode = chart._legendNodes.get('u2');
+    const summaryMeta = chart._legendNodes.get('__summary__Alice');
+    assert.equal(knownNode.totalEl.textContent, '240 (1)');
+    assert.equal(knownNode.deltaTrainedEl.textContent, '240 (1)');
+    assert.equal(knownNode.deltaLostEl.textContent, '0 (0)');
+    assert.equal(unknownNode.rowEl.style.display, '');
+    assert.equal(unknownNode.totalEl.textContent, '0 (1)');
+    assert.equal(unknownNode.deltaTrainedEl.textContent, '0 (1)');
+    assert.equal(unknownNode.deltaLostEl.textContent, '0 (0)');
+    assert.match(summaryMeta.summaryLabelEl.textContent, /Knight: 240 \(1\)/);
+    assert.match(summaryMeta.summaryLabelEl.textContent, /Unknown Unit: 0 \(1\)/);
   });
 
   test('shows dash when all units are zero', () => {
@@ -800,6 +859,23 @@ describe('armyLegendUnitRow', () => {
     assert.equal(nameEl.textContent, 'Spearman');
     const totalEl = row.querySelector('.aoe4-army-unit-total');
     assert.equal(totalEl.textContent, '42');
+  });
+
+  test('sets value-mode unit total as cost with count and no resource suffix', () => {
+    const unit = {
+      ...makeUnit('u1', 'Knight', [0, 240, 480], 2),
+      _countValues: [0, 1, 2],
+      _valueValues: [0, 240, 480],
+      _valueTotal: 480,
+    };
+    const chart = makeChart([unit]);
+    chart.options = { armyMode: 'value' };
+    const timeline = makeTimeline(document);
+    const legendNodes = new Map();
+
+    const row = armyLegendUnitRow(timeline, chart, unit, 'Alice', legendNodes);
+
+    assert.equal(row.querySelector('.aoe4-army-unit-total').textContent, '480 (2)');
   });
 
   test('registers node in legendNodes map', () => {

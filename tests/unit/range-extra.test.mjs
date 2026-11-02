@@ -1,8 +1,11 @@
 import { test, describe, beforeEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseHTML } from 'linkedom';
+import * as armyLegendMetrics from '../../src/content/army-legend-metrics.ts';
 
-import {
+globalThis.__aoe4CombatMetrics = armyLegendMetrics;
+
+const {
   clientXToSampleIndex,
   getActiveRange,
   getActiveDrag,
@@ -12,7 +15,7 @@ import {
   applyRangeLegend,
   countInRange,
   countAfterStartInRange,
-} from '../../src/content/range.ts';
+} = await import('../../src/content/range.ts');
 
 function setupDOM() {
   const { document, HTMLElement } = parseHTML('<!DOCTYPE html><html><body></body></html>');
@@ -583,6 +586,8 @@ describe('applyRangeLegend', () => {
       // At t=10, one 1,000-resource unit is already alive. During (10,30],
       // two 240-resource units finish and one 240-resource unit dies.
       values: [0, 1000, 1240, 1240],
+      _countValues: [0, 1, 2, 2],
+      _valueValues: [0, 1000, 1240, 1240],
       _finishedTimes: [5, 15, 25],
       _finishedCosts: [1000, 240, 240],
       _destroyedTimes: [20],
@@ -606,12 +611,59 @@ describe('applyRangeLegend', () => {
     applyRangeLegend(chart, timeline);
 
     assert.equal(rowEl.style.display, '');
-    assert.equal(totalEl.textContent, '1,000');
-    assert.equal(deltaTrainedEl.textContent, '480');
-    assert.equal(deltaLostEl.textContent, '240');
+    assert.equal(totalEl.textContent, '1,000 (1)');
+    assert.equal(deltaTrainedEl.textContent, '480 (2)');
+    assert.equal(deltaLostEl.textContent, '240 (1)');
     assert.match(summaryLabelEl.innerHTML, /Iron Pagoda/);
-    assert.match(summaryLabelEl.innerHTML, /480/);
-    assert.match(summaryLabelEl.innerHTML, /240/);
+    assert.match(summaryLabelEl.innerHTML, /480 \(2\)/);
+    assert.match(summaryLabelEl.innerHTML, /240 \(1\)/);
+  });
+
+  test('value-mode range legend keeps zero-cost units visible using count stats', () => {
+    const chart = makeChart('army', 'army', [0, 10, 20, 30]);
+    chart.options = { armyMode: 'value' };
+    const rowEl = doc.createElement('tr');
+    const totalEl = doc.createElement('td');
+    const deltaTrainedEl = doc.createElement('td');
+    const deltaLostEl = doc.createElement('td');
+    const node = { rowEl, totalEl, deltaTrainedEl, deltaLostEl };
+    const unit = {
+      key: 'unknown-unit',
+      playerName: 'P1',
+      _hidden: false,
+      values: [0, 0, 0, 0],
+      _countValues: [0, 1, 3, 2],
+      _valueValues: [0, 0, 0, 0],
+      _finishedTimes: [5, 15, 18],
+      _finishedCosts: [0, 0, 0],
+      _destroyedTimes: [25],
+      _destroyedCosts: [0],
+      unitLabel: 'Unknown Unit',
+      label: 'Unknown Unit',
+    };
+    const summaryLabelEl = doc.createElement('td');
+    chart._legendNodes = new Map([
+      ['unknown-unit', node],
+      ['__summary__P1', {
+        panelEl: { style: { display: '' } },
+        summaryLabelEl,
+        units: [unit],
+      }],
+    ]);
+    chart.data.series = [unit];
+    const timeline = makeTimeline(doc);
+    timeline.chartBox.__aoe4ActiveRange = { chartValue: 'army', startIdx: 1, endIdx: 3 };
+
+    applyRangeLegend(chart, timeline);
+
+    assert.equal(rowEl.style.display, '');
+    assert.equal(totalEl.textContent, '0 (1)');
+    assert.equal(deltaTrainedEl.textContent, '0 (2)');
+    assert.equal(deltaLostEl.textContent, '0 (1)');
+    assert.ok(!deltaTrainedEl.classList.contains('is-zero'));
+    assert.ok(!deltaLostEl.classList.contains('is-zero'));
+    assert.match(summaryLabelEl.innerHTML, /0 \(2\)/);
+    assert.match(summaryLabelEl.innerHTML, /0 \(1\)/);
   });
 
   test('skips series item with no key', () => {

@@ -1,12 +1,15 @@
 import { afterEach, beforeEach, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseHTML } from 'linkedom';
+import * as armyLegendMetrics from '../../src/content/army-legend-metrics.ts';
 
-import {
+globalThis.__aoe4CombatMetrics = armyLegendMetrics;
+
+const {
   attachPlayerToggle,
   detachPlayerToggle,
   recomputeVisibleGeometry,
-} from '../../src/content/interactions.ts';
+} = await import('../../src/content/interactions.ts');
 
 function installDom() {
   const { window, document } = parseHTML(`<!doctype html><html><body>

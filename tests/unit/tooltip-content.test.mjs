@@ -1,11 +1,15 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseHTML } from 'linkedom';
-import {
+import * as armyLegendMetrics from '../../src/content/army-legend-metrics.ts';
+
+globalThis.__aoe4CombatMetrics = armyLegendMetrics;
+
+const {
   appendVillagerEfficiencyTooltipRows,
   appendUpgradeTooltipLabel,
   readableTooltipAccentColor,
-} from '../../src/content/tooltip-content.ts';
+} = await import('../../src/content/tooltip-content.ts');
 
 describe('tooltip-content upgrade labels', () => {
   it('brightens dark player colors for tooltip accents', () => {

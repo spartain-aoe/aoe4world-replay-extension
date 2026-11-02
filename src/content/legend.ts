@@ -3,22 +3,13 @@ import { armyIconElement, resolveCurrentUnitName } from './unit-icons.ts';
 import { drawTimelineCanvasChart, drawTimelineCanvasChartForHover } from './canvas-render.ts';
 import { getActiveRange, applyRangeLegend } from './range.ts';
 import { shouldSuppressHover } from './interactions.ts';
+import { formatArmyMetric, formatArmySummary, isSummaryNode, isUnitNode } from './legend-live.ts';
 import type {
   Chart,
   ChartSeries,
   LegendNodeMeta,
-  LegendSummaryNode,
-  LegendUnitNode,
   TimelineElements,
 } from './types.ts';
-
-function isSummaryNode(key: string, _meta: LegendNodeMeta): _meta is LegendSummaryNode {
-  return key.startsWith('__summary__');
-}
-
-function isUnitNode(key: string, _meta: LegendNodeMeta): _meta is LegendUnitNode {
-  return !key.startsWith('__summary__');
-}
 
 export function renderArmyUnitLegend(timeline: TimelineElements, chart: Chart): void {
   timeline.__aoe4LegendChart = chart;
@@ -95,11 +86,16 @@ export function renderArmyUnitLegendNow(timeline: TimelineElements, chart: Chart
     }
 
     const sortedUnits = units.sort((a: ChartSeries, b: ChartSeries) => (b.createdTotal || 0) - (a.createdTotal || 0));
+    const valueMode = chart.options?.armyMode === 'value';
     const inlineSummary = document.createElement('span');
     inlineSummary.className = 'aoe4-inline-legend-summary';
-    inlineSummary.textContent = sortedUnits.map(u => u.unitLabel || u.label || '').join(', ');
+    inlineSummary.textContent = formatArmySummary(sortedUnits, valueMode);
     inlineSummary.title = sortedUnits
-      .map(u => `${u.unitLabel || u.label || ''}: ${u.createdTotal || 0}`)
+      .map(u => `${u.unitLabel || u.label || ''}: ${formatArmyMetric(
+        valueMode ? (u._valueTotal || 0) : (u.createdTotal || 0),
+        u.createdTotal || 0,
+        valueMode,
+      )}`)
       .join('\n');
 
     const chevron = document.createElement('span');
@@ -196,9 +192,11 @@ export function armyLegendUnitRow(
   const armyMode = chart.options?.armyMode === 'value' ? 'value' : 'count';
   const totalCount = unit.createdTotal || 0;
   const totalValue = unit._valueTotal || 0;
-  total.textContent = armyMode === 'value'
-    ? `${Math.round(totalValue).toLocaleString()} res`
-    : Math.round(totalCount).toLocaleString();
+  total.textContent = formatArmyMetric(
+    armyMode === 'value' ? totalValue : totalCount,
+    totalCount,
+    armyMode === 'value',
+  );
 
   const deltaTrained = document.createElement('span');
   deltaTrained.className = 'aoe4-army-unit-delta-trained';
@@ -213,6 +211,7 @@ export function armyLegendUnitRow(
       deltaLostEl: deltaLost,
       rowEl: unitRow,
       summaryTotal: unit.createdTotal || 0,
+      summaryValue: unit._valueTotal || 0,
     });
   }
 
@@ -292,7 +291,7 @@ export function refreshArmyLegendNames(timeline: TimelineElements, chart: Chart)
       if (fresh) unit.unitLabel = fresh;
     }
     if (rangeActive) continue;
-    const text = meta.units.map(unit => unit.unitLabel || unit.label || '').join(', ');
+    const text = formatArmySummary(meta.units, chart.options?.armyMode === 'value');
     if (meta.summaryLabelEl.textContent !== text) meta.summaryLabelEl.textContent = text;
   }
 }

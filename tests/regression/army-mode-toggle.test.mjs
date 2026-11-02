@@ -8,15 +8,18 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseHTML } from 'linkedom';
+import * as armyLegendMetrics from '../../src/content/army-legend-metrics.ts';
 
-import {
+globalThis.__aoe4CombatMetrics = armyLegendMetrics;
+
+const {
   applyArmyModeToChart,
   chartHasValueData,
   detachArmyModeToggle,
   getActiveArmyMode,
   renderArmyModeToggle,
   setActiveArmyMode,
-} from '../../src/content/army-mode.ts';
+} = await import('../../src/content/army-mode.ts');
 
 function makeDomGlobals() {
   const { window, document } = parseHTML('<!doctype html><html><body></body></html>');
@@ -149,8 +152,8 @@ describe('army-mode toggle UI', () => {
     const countBtn = Array.from(timeline.chartBox.querySelectorAll('.aoe4-army-mode-toggle-btn'))
       .find(b => b.dataset.mode === 'count');
     assert.equal(countBtn.getAttribute('aria-pressed'), 'false', 'count button unpressed');
-    assert.equal(legend.knightTotal.textContent, '400 res', 'legend total updated to value');
-    assert.equal(legend.spearTotal.textContent, '240 res', 'second legend total updated to value');
+    assert.equal(legend.knightTotal.textContent, '400 (2)', 'legend total updated to cost and count');
+    assert.equal(legend.spearTotal.textContent, '240 (4)', 'second legend total updated to cost and count');
   });
 
   test('clicking Count swaps back to _countValues', () => {
@@ -222,7 +225,7 @@ describe('army-mode toggle UI', () => {
 
     assert.equal(chart.options.armyMode, 'value', 'restored from storage');
     assert.equal(chart.data.series[0].values, chart.data.series[0]._valueValues);
-    assert.equal(legend.knightTotal.textContent, '400 res');
+    assert.equal(legend.knightTotal.textContent, '400 (2)');
 
     setActiveArmyMode('count');
   });

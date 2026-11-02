@@ -6,6 +6,9 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseHTML } from 'linkedom';
+import * as armyLegendMetrics from '../../src/content/army-legend-metrics.ts';
+
+globalThis.__aoe4CombatMetrics = armyLegendMetrics;
 
 function makeDomGlobals() {
   const { window, document } = parseHTML('<!doctype html><html><body></body></html>');

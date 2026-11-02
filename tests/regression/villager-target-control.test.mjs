@@ -1,14 +1,17 @@
 import { afterEach, beforeEach, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseHTML } from 'linkedom';
+import * as armyLegendMetrics from '../../src/content/army-legend-metrics.ts';
 
-import {
+globalThis.__aoe4CombatMetrics = armyLegendMetrics;
+
+const {
   detachVillagerTargetControl,
   getActiveVillagerCropToTarget,
   getActiveVillagerTarget,
   renderVillagerTargetControl,
   setActiveVillagerTarget,
-} from '../../src/content/villager-target.ts';
+} = await import('../../src/content/villager-target.ts');
 
 function makeDomGlobals() {
   const { window, document } = parseHTML('<!doctype html><html><body></body></html>');
